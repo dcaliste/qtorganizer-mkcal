@@ -76,10 +76,6 @@ public:
 private:
     void storageModified(mKCal::ExtendedStorage *storage, const QString &info) override;
 
-    QtOrganizer::QOrganizerCollection toCollection(const mKCal::Notebook::Ptr &nb) const;
-    void updateNotebook(mKCal::Notebook::Ptr nb,
-                        const QtOrganizer::QOrganizerCollection &collection) const;
-
     mKCal::ExtendedCalendar::Ptr mCalendars;
     mKCal::SqliteStorage::Ptr mStorage;
     bool mOpened = false;

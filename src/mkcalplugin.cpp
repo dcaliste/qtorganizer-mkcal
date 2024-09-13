@@ -31,7 +31,7 @@
 
 #include "mkcalplugin.h"
 
-#include <QDebug>
+#include "helper.h"
 
 QtOrganizer::QOrganizerManagerEngine* mKCalFactory::engine(const QMap<QString, QString>& parameters, QtOrganizer::QOrganizerManager::Error* error)
 {
@@ -109,100 +109,6 @@ QtOrganizer::QOrganizerCollectionId mKCalEngine::defaultCollectionId() const
         : QtOrganizer::QOrganizerCollectionId();
 }
 
-QtOrganizer::QOrganizerCollection mKCalEngine::toCollection(const mKCal::Notebook::Ptr &nb) const
-{
-    QtOrganizer::QOrganizerCollection collection;
-    collection.setId(QtOrganizer::QOrganizerCollectionId(managerUri(), nb->uid().toUtf8()));
-    collection.setMetaData(QtOrganizer::QOrganizerCollection::KeyName,
-                           nb->name());
-    collection.setMetaData(QtOrganizer::QOrganizerCollection::KeyDescription,
-                           nb->description());
-    collection.setMetaData(QtOrganizer::QOrganizerCollection::KeyColor,
-                           nb->color());
-    collection.setExtendedMetaData(QStringLiteral("shared"),
-                                   nb->isShared());
-    collection.setExtendedMetaData(QStringLiteral("master"),
-                                   nb->isMaster());
-    collection.setExtendedMetaData(QStringLiteral("synchronized"),
-                                   nb->isSynchronized());
-    collection.setExtendedMetaData(QStringLiteral("readOnly"),
-                                   nb->isReadOnly());
-    collection.setExtendedMetaData(QStringLiteral("visible"),
-                                   nb->isVisible());
-    collection.setExtendedMetaData(QStringLiteral("syncDate"),
-                                   nb->syncDate());
-    collection.setExtendedMetaData(QStringLiteral("pluginName"),
-                                   nb->pluginName());
-    collection.setExtendedMetaData(QStringLiteral("account"),
-                                   nb->account());
-    collection.setExtendedMetaData(QStringLiteral("attachmentSize"),
-                                   nb->attachmentSize());
-    collection.setExtendedMetaData(QStringLiteral("creationDate"),
-                                   nb->creationDate());
-    collection.setExtendedMetaData(QStringLiteral("modifiedDate"),
-                                   nb->modifiedDate());
-    collection.setExtendedMetaData(QStringLiteral("sharedWith"),
-                                   nb->sharedWith());
-    collection.setExtendedMetaData(QStringLiteral("syncProfile"),
-                                   nb->syncProfile());
-    for (const QByteArray &key : nb->customPropertyKeys()) {
-        if (key == "secondaryColor") {
-            collection.setMetaData(QtOrganizer::QOrganizerCollection::KeySecondaryColor,
-                                   nb->customProperty(key));
-        } else if (key == "image") {
-            collection.setMetaData(QtOrganizer::QOrganizerCollection::KeyImage,
-                                   nb->customProperty(key));
-        } else {
-            collection.setExtendedMetaData(QString::fromUtf8(key),
-                                           nb->customProperty(key));
-        }
-    }
-    return collection;
-}
-
-void mKCalEngine::updateNotebook(mKCal::Notebook::Ptr nb,
-                                 const QtOrganizer::QOrganizerCollection &collection) const
-{
-    nb->setName(collection.metaData(QtOrganizer::QOrganizerCollection::KeyName).toString());
-    nb->setDescription(collection.metaData(QtOrganizer::QOrganizerCollection::KeyDescription).toString());
-    nb->setColor(collection.metaData(QtOrganizer::QOrganizerCollection::KeyColor).toString());
-    nb->setCustomProperty("secondaryColor", collection.metaData(QtOrganizer::QOrganizerCollection::KeySecondaryColor).toString());
-    nb->setCustomProperty("image", collection.metaData(QtOrganizer::QOrganizerCollection::KeyImage).toString());
-    const QVariantMap props = collection.extendedMetaData();
-    for (QVariantMap::ConstIterator it = props.constBegin();
-         it != props.constEnd(); ++it) {
-        if (it.key() == QStringLiteral("shared")) {
-            nb->setIsShared(it.value().toBool());
-        } else if (it.key() == QStringLiteral("master")) {
-            nb->setIsMaster(it.value().toBool());
-        } else if (it.key() == QStringLiteral("synchronized")) {
-            nb->setIsSynchronized(it.value().toBool());
-        } else if (it.key() == QStringLiteral("readOnly")) {
-            nb->setIsReadOnly(it.value().toBool());
-        } else if (it.key() == QStringLiteral("visible")) {
-            nb->setIsVisible(it.value().toBool());
-        } else if (it.key() == QStringLiteral("syncDate")) {
-            nb->setSyncDate(it.value().toDateTime());
-        } else if (it.key() == QStringLiteral("creationDate")) {
-            nb->setCreationDate(it.value().toDateTime());
-        } else if (it.key() == QStringLiteral("modifiedDate")) {
-            nb->setModifiedDate(it.value().toDateTime());
-        } else if (it.key() == QStringLiteral("pluginName")) {
-            nb->setPluginName(it.value().toString());
-        } else if (it.key() == QStringLiteral("account")) {
-            nb->setAccount(it.value().toString());
-        } else if (it.key() == QStringLiteral("syncProfile")) {
-            nb->setSyncProfile(it.value().toString());
-        } else if (it.key() == QStringLiteral("attachmentSize")) {
-            nb->setAttachmentSize(it.value().toInt());
-        } else if (it.key() == QStringLiteral("sharedWith")) {
-            nb->setSharedWith(it.value().toStringList());
-        } else {
-            nb->setCustomProperty(it.key().toUtf8(), it.value().toString());
-        }
-    }
-}
-
 QtOrganizer::QOrganizerCollection mKCalEngine::collection(const QtOrganizer::QOrganizerCollectionId &collectionId,
                                                           QtOrganizer::QOrganizerManager::Error *error) const
 {
@@ -210,7 +116,7 @@ QtOrganizer::QOrganizerCollection mKCalEngine::collection(const QtOrganizer::QOr
     if (isOpened()) {
         mKCal::Notebook::Ptr nb = mStorage->notebook(collectionId.localId());
         if (collectionId.managerUri() == managerUri() && nb) {
-            return toCollection(nb);
+            return toCollection(managerUri(), nb);
         } else {
             *error = QtOrganizer::QOrganizerManager::DoesNotExistError;
         }
@@ -228,7 +134,7 @@ QList<QtOrganizer::QOrganizerCollection> mKCalEngine::collections(QtOrganizer::Q
     *error = QtOrganizer::QOrganizerManager::NoError;
     if (isOpened()) {
         for (const mKCal::Notebook::Ptr &nb : mStorage->notebooks()) {
-            ret.append(toCollection(nb));
+            ret.append(toCollection(managerUri(), nb));
         }
     } else {
         *error = QtOrganizer::QOrganizerManager::PermissionsError;

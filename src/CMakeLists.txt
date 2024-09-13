@@ -1,7 +1,9 @@
 set(SRC
-	mkcalplugin.cpp)
+  mkcalplugin.cpp
+  helper.cpp)
 set(HEADERS
-	mkcalplugin.h)
+  mkcalplugin.h
+  helper.h)
 
 add_library(qtorganizer_mkcal SHARED ${SRC} ${HEADERS})
 
