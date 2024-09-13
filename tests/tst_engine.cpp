@@ -34,6 +34,7 @@
 #include <QDebug>
 #include <QString>
 #include <QSignalSpy>
+#include <QFileInfo>
 
 #include <QOrganizerManager>
 #include <extendedcalendar.h>
@@ -53,14 +54,19 @@ private slots:
     void testCollectionIO();
     void testCollectionExternal();
 private:
-    QOrganizerManager *mManager;
+    QOrganizerManager *mManager = nullptr;
 };
 
 void tst_engine::initTestCase()
 {
-    mManager = new QOrganizerManager(QString::fromLatin1("mkcal"));
-    QVERIFY(mManager);
+    const QString db = QStringLiteral("db");
+    QVERIFY(!QFileInfo(db).exists());
+
+    QMap<QString, QString> parameters;
+    parameters.insert(QStringLiteral("databaseName"), db);
+    mManager = new QOrganizerManager(QString::fromLatin1("mkcal"), parameters);
     QCOMPARE(mManager->error(), QOrganizerManager::NoError);
+    QCOMPARE(mManager->managerParameters().value(QStringLiteral("databaseName")), db);
     QVERIFY(!mManager->defaultCollectionId().isNull());
 }
 
@@ -163,7 +169,7 @@ void tst_engine::testCollectionIO()
 void tst_engine::testCollectionExternal()
 {
     mKCal::ExtendedCalendar::Ptr cal(new mKCal::ExtendedCalendar(QTimeZone()));
-    mKCal::SqliteStorage storage(cal);
+    mKCal::SqliteStorage storage(cal, QStringLiteral("db"));
     storage.open();
 
     QSignalSpy dataChanged(mManager, &QOrganizerManager::dataChanged);
