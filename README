@@ -1,0 +1,2 @@
+This repository contains a backend for the QtOrganizer API.
+It stores event information to a local SQLite database using mKCal.
