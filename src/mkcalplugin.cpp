@@ -105,6 +105,13 @@ void mKCalEngine::storageModified(mKCal::ExtendedStorage *storage,
 QOrganizerCollectionId mKCalEngine::defaultCollectionId() const
 {
     mKCal::Notebook::Ptr nb = mStorage->defaultNotebook();
+    if (isOpened() && !nb) {
+        nb = mKCal::Notebook::Ptr(new mKCal::Notebook(QStringLiteral("Default"),
+                                                      QString()));
+        if (!mStorage->setDefaultNotebook(nb)) {
+            nb.clear();
+        }
+    }
 
     return (isOpened() && nb)
         ? QOrganizerCollectionId(managerUri(), nb->uid().toUtf8())
