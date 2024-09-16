@@ -94,6 +94,7 @@ void tst_engine::testCollections()
              QStringLiteral("#0000FF"));
 }
 
+Q_DECLARE_METATYPE(QList<QOrganizerCollectionId>)
 void tst_engine::testCollectionIO()
 {
     QOrganizerCollection collection;
@@ -109,19 +110,19 @@ void tst_engine::testCollectionIO()
                            QStringLiteral("theme://notebook.png"));
     collection.setExtendedMetaData(QStringLiteral("visible"), true);
 
-    // qRegisterMetaType<QOrganizerCollectionId>();
-    // QSignalSpy added(mManager, &QOrganizerManager::collectionsAdded);
-    // QSignalSpy modified(mManager, &QOrganizerManager::collectionsChanged);
-    // QSignalSpy deleted(mManager, &QOrganizerManager::collectionsRemoved);
+    qRegisterMetaType<QList<QOrganizerCollectionId>>();
+    QSignalSpy added(mManager, &QOrganizerManager::collectionsAdded);
+    QSignalSpy modified(mManager, &QOrganizerManager::collectionsChanged);
+    QSignalSpy deleted(mManager, &QOrganizerManager::collectionsRemoved);
 
     QVERIFY(collection.id().isNull());
     QVERIFY(mManager->saveCollection(&collection));
     QCOMPARE(mManager->error(), QOrganizerManager::NoError);
     QVERIFY(!collection.id().isNull());
-    // QCOMPARE(added.count(), 1);
-    // QVERIFY(modified.isEmpty());
-    // QVERIFY(deleted.isEmpty());
-    // QVERIFY(added.takeFirst()[0].value<QList<QOrganizerCollectionId>>().contains(collection.id()));
+    QCOMPARE(added.count(), 1);
+    QVERIFY(modified.isEmpty());
+    QVERIFY(deleted.isEmpty());
+    QVERIFY(added.takeFirst()[0].value<QList<QOrganizerCollectionId>>().contains(collection.id()));
     
     QCOMPARE(mManager->collections().count(), 2);
     QOrganizerCollection read = mManager->collection(collection.id());
