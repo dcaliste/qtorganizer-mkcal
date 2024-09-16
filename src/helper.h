@@ -33,8 +33,26 @@
 #define HELPER_H
 
 #include <QtOrganizer/QOrganizerCollection>
+#include <QtOrganizer/QOrganizerItem>
+#include <QtOrganizer/QOrganizerItemDetail>
+
+#include <KCalendarCore/Event>
+#include <KCalendarCore/Todo>
+#include <KCalendarCore/Journal>
 
 #include <notebook.h>
+
+void updateEvent(KCalendarCore::Event::Ptr event,
+                 const QtOrganizer::QOrganizerItem &item,
+                 const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask = QList<QtOrganizer::QOrganizerItemDetail::DetailType>());
+
+void updateTodo(KCalendarCore::Todo::Ptr todo,
+                const QtOrganizer::QOrganizerItem &item,
+                const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask = QList<QtOrganizer::QOrganizerItemDetail::DetailType>());
+
+void updateJournal(KCalendarCore::Journal::Ptr journal,
+                   const QtOrganizer::QOrganizerItem &item,
+                   const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask = QList<QtOrganizer::QOrganizerItemDetail::DetailType>());
 
 QtOrganizer::QOrganizerCollection toCollection(const QString &managerUri,
                                                const mKCal::Notebook::Ptr &nb);

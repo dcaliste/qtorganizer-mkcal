@@ -64,6 +64,15 @@ public:
     QString managerName() const override;
     QMap<QString, QString> managerParameters() const override;
 
+    QList<QtOrganizer::QOrganizerItemFilter::FilterType> supportedFilters() const override;
+    QList<QtOrganizer::QOrganizerItemDetail::DetailType> supportedItemDetails(QtOrganizer::QOrganizerItemType::ItemType itemType) const override;
+    QList<QtOrganizer::QOrganizerItemType::ItemType> supportedItemTypes() const override;
+
+    bool saveItems(QList<QtOrganizer::QOrganizerItem> *items,
+                   const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask,
+                   QMap<int, QtOrganizer::QOrganizerManager::Error> *errorMap,
+                   QtOrganizer::QOrganizerManager::Error *error) override;
+
     QtOrganizer::QOrganizerCollectionId defaultCollectionId() const override;
     QtOrganizer::QOrganizerCollection collection(const QtOrganizer::QOrganizerCollectionId &collectionId,
                                                  QtOrganizer::QOrganizerManager::Error *error) const override;
@@ -75,6 +84,10 @@ public:
 
 private:
     void storageModified(mKCal::ExtendedStorage *storage, const QString &info) override;
+    void storageUpdated(mKCal::ExtendedStorage *storage,
+                        const KCalendarCore::Incidence::List &added,
+                        const KCalendarCore::Incidence::List &modified,
+                        const KCalendarCore::Incidence::List &deleted) override;
 
     mKCal::ExtendedCalendar::Ptr mCalendars;
     mKCal::SqliteStorage::Ptr mStorage;

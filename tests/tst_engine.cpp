@@ -37,6 +37,17 @@
 #include <QFileInfo>
 
 #include <QOrganizerManager>
+#include <QOrganizerItemClassification>
+#include <QOrganizerItemLocation>
+#include <QOrganizerItemPriority>
+#include <QOrganizerItemTimestamp>
+#include <QOrganizerItemVersion>
+#include <QOrganizerItemAudibleReminder>
+#include <QOrganizerItemEmailReminder>
+#include <QOrganizerItemVisualReminder>
+#include <QOrganizerEventAttendee>
+#include <QOrganizerEventTime>
+
 #include <extendedcalendar.h>
 #include <sqlitestorage.h>
 
@@ -53,8 +64,64 @@ private slots:
     void testCollections();
     void testCollectionIO();
     void testCollectionExternal();
+
+    void testSimpleEventIO();
+    void testItemClassification_data();
+    void testItemClassification();
+    void testItemLocation();
+    void testItemPriority_data();
+    void testItemPriority();
+    void testItemTimestamp();
+    void testItemVersion();
+    void testItemAudibleReminder();
+    void testItemEmailReminder();
+    void testItemVisualReminder();
+    void testItemAttendees();
+    void testItemAttendeeStatus_data();
+    void testItemAttendeeStatus();
+    void testItemAttendeeRole_data();
+    void testItemAttendeeRole();
 private:
     QOrganizerManager *mManager = nullptr;
+};
+
+class DbObserver: public QObject, public mKCal::ExtendedStorageObserver
+{
+    Q_OBJECT
+public:
+    DbObserver(QObject *parent = nullptr)
+        : QObject(parent)
+        , mCalendar(new mKCal::ExtendedCalendar(QTimeZone()))
+        , mStorage(new mKCal::SqliteStorage(mCalendar, QStringLiteral("db")))
+    {
+        mStorage->registerObserver(this);
+        mStorage->open();
+    }
+    ~DbObserver()
+    {
+        mStorage->unregisterObserver(this);
+    }
+    KCalendarCore::Incidence::Ptr incidence(const QByteArray &uid, const QDateTime &recurId = QDateTime())
+    {
+        return mCalendar->incidence(QString::fromUtf8(uid), recurId);
+    }
+
+signals:
+    void dataChanged();
+
+private:
+    void storageModified(mKCal::ExtendedStorage *storage,
+                         const QString &info) override
+    {
+        Q_UNUSED(storage);
+        Q_UNUSED(info);
+
+        mStorage->load();
+        emit dataChanged();
+    }
+
+    mKCal::ExtendedCalendar::Ptr mCalendar;
+    mKCal::ExtendedStorage::Ptr mStorage;
 };
 
 void tst_engine::initTestCase()
@@ -209,6 +276,410 @@ void tst_engine::testCollectionExternal()
 
     collection = mManager->collection(QOrganizerCollectionId(mManager->managerUri(), nb->uid().toUtf8()));
     QVERIFY(collection.id().isNull());
+}
+
+Q_DECLARE_METATYPE(QList<QOrganizerItemId>)
+void tst_engine::testSimpleEventIO()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test item"));
+    item.setDescription(QStringLiteral("Test description"));
+    item.addComment(QStringLiteral("Comment 1"));
+    item.addComment(QStringLiteral("Comment 2"));
+    QOrganizerEventTime time;
+    time.setStartDateTime(QDateTime(QDate(2024, 9, 16),
+                                    QTime(12, 00), QTimeZone("Europe/Paris")));
+    time.setEndDateTime(time.startDateTime().addSecs(3600));
+    item.saveDetail(&time);
+
+    qRegisterMetaType<QList<QOrganizerItemId>>();
+    QSignalSpy itemsAdded(mManager, &QOrganizerManager::itemsAdded);
+
+    QVERIFY(mManager->saveItem(&item));
+    QVERIFY(!item.id().isNull());
+    QTRY_COMPARE(itemsAdded.count(), 1);
+    QVERIFY(itemsAdded.takeFirst()[0].value<QList<QOrganizerItemId>>().contains(item.id()));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    dataChanged.clear();
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->type(), KCalendarCore::IncidenceBase::TypeEvent);
+    QCOMPARE(incidence->summary(), item.displayLabel());
+    QCOMPARE(incidence->description(), item.description());
+    QCOMPARE(incidence->dtStart(), time.startDateTime());
+    QCOMPARE(incidence.staticCast<KCalendarCore::Event>()->dtEnd(), time.endDateTime());
+    // mKCal is broken with spaces in comments.
+    // QCOMPARE(incidence->comments(), item.comments());
+}
+
+Q_DECLARE_METATYPE(QOrganizerItemClassification::AccessClassification)
+void tst_engine::testItemClassification_data()
+{
+    QTest::addColumn<QOrganizerItemClassification::AccessClassification>("classification");
+    QTest::addColumn<KCalendarCore::Incidence::Secrecy>("secrecy");
+
+    QTest::newRow("public") << QOrganizerItemClassification::AccessPublic
+                            << KCalendarCore::Incidence::SecrecyPublic;
+    QTest::newRow("private") << QOrganizerItemClassification::AccessPrivate
+                             << KCalendarCore::Incidence::SecrecyPrivate;
+    QTest::newRow("confidential") << QOrganizerItemClassification::AccessConfidential
+                                  << KCalendarCore::Incidence::SecrecyConfidential;
+}
+
+void tst_engine::testItemClassification()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QFETCH(QOrganizerItemClassification::AccessClassification, classification);
+    QFETCH(KCalendarCore::Incidence::Secrecy, secrecy);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test item classification"));
+    QOrganizerItemClassification detail;
+    detail.setClassification(classification);
+    item.saveDetail(&detail);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->secrecy(), secrecy);
+}
+
+void tst_engine::testItemLocation()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test item location"));
+    QOrganizerItemLocation detail;
+    detail.setLabel(QStringLiteral("A test location"));
+    detail.setLatitude(42.424242);
+    detail.setLongitude(-42.424242);
+    item.saveDetail(&detail);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->location(), detail.label());
+    QCOMPARE(incidence->geoLatitude(), float(detail.latitude()));
+    QCOMPARE(incidence->geoLongitude(), float(detail.longitude()));
+}
+
+Q_DECLARE_METATYPE(QOrganizerItemPriority::Priority)
+void tst_engine::testItemPriority_data()
+{
+    QTest::addColumn<QOrganizerItemPriority::Priority>("priority");
+    QTest::addColumn<int>("value");
+
+    QTest::newRow("highest priority") << QOrganizerItemPriority::HighestPriority << 1;
+    QTest::newRow("extremely high priority") << QOrganizerItemPriority::ExtremelyHighPriority << 2;
+    QTest::newRow("very high priority") << QOrganizerItemPriority::VeryHighPriority << 3;
+    QTest::newRow("high priority") << QOrganizerItemPriority::HighPriority << 4;
+    QTest::newRow("medium priority") << QOrganizerItemPriority::MediumPriority << 5;
+    QTest::newRow("low priority") << QOrganizerItemPriority::LowPriority << 6;
+    QTest::newRow("very low priority") << QOrganizerItemPriority::VeryLowPriority << 7;
+    QTest::newRow("extremely low priority") << QOrganizerItemPriority::ExtremelyLowPriority << 8;
+    QTest::newRow("lowest priority") << QOrganizerItemPriority::LowestPriority << 9;
+}
+
+void tst_engine::testItemPriority()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QFETCH(QOrganizerItemPriority::Priority, priority);
+    QFETCH(int, value);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test item priority"));
+    QOrganizerItemPriority detail;
+    detail.setPriority(priority);
+    item.saveDetail(&detail);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->priority(), value);
+}
+
+void tst_engine::testItemTimestamp()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test item timestamp"));
+    QOrganizerItemTimestamp detail;
+    detail.setCreated(QDateTime(QDate(2024, 9, 16),
+                                QTime(14, 20), QTimeZone("Europe/Paris")));
+    detail.setLastModified(QDateTime(QDate(2024, 9, 16),
+                                     QTime(14, 30), QTimeZone("Europe/Paris")));
+    item.saveDetail(&detail);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->created(), detail.created());
+    QCOMPARE(incidence->lastModified(), detail.lastModified());
+}
+
+void tst_engine::testItemVersion()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test item version"));
+    QOrganizerItemVersion detail;
+    detail.setVersion(42);
+    item.saveDetail(&detail);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->revision(), detail.version());
+}
+
+void tst_engine::testItemAudibleReminder()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test item audible reminder"));
+    QOrganizerItemAudibleReminder detail;
+    detail.setSecondsBeforeStart(300);
+    detail.setRepetition(3, 60);
+    detail.setDataUrl(QUrl(QStringLiteral("theme://reminder.ogg")));
+    item.saveDetail(&detail);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->alarms().count(), 1);
+    KCalendarCore::Alarm::Ptr alarm = incidence->alarms().first();
+    QCOMPARE(alarm->type(), KCalendarCore::Alarm::Audio);
+    QCOMPARE(alarm->audioFile(), detail.dataUrl().toString());
+    QCOMPARE(alarm->startOffset().asSeconds(), detail.secondsBeforeStart());
+    QVERIFY(!alarm->hasEndOffset());
+    QCOMPARE(alarm->snoozeTime().asSeconds(), detail.repetitionDelay());
+    QCOMPARE(alarm->repeatCount(), detail.repetitionCount());
+}
+
+void tst_engine::testItemEmailReminder()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test item viual reminder"));
+    QOrganizerItemEmailReminder detail;
+    detail.setContents(QStringLiteral("Test reminder"),
+                       QStringLiteral("Some text to send"),
+                       QVariantList());
+    detail.setRecipients(QStringList() << QStringLiteral("Alice <alice@example.org>")
+                         << QStringLiteral("Bob <bob@example.org>"));
+    item.saveDetail(&detail);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->alarms().count(), 1);
+    KCalendarCore::Alarm::Ptr alarm = incidence->alarms().first();
+    QCOMPARE(alarm->type(), KCalendarCore::Alarm::Email);
+    QCOMPARE(alarm->mailSubject(), detail.subject());
+    QCOMPARE(alarm->mailText(), detail.body());
+    // mKCal doesn't support multiple addresses.
+    //for (const KCalendarCore::Person &person : alarm->mailAddresses()) {
+    //    QVERIFY(detail.recipients().contains(person.fullName()));
+    //}
+}
+
+void tst_engine::testItemVisualReminder()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test item viual reminder"));
+    QOrganizerItemVisualReminder detail;
+    detail.setMessage(QStringLiteral("Test reminder"));
+    item.saveDetail(&detail);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->alarms().count(), 1);
+    KCalendarCore::Alarm::Ptr alarm = incidence->alarms().first();
+    QCOMPARE(alarm->type(), KCalendarCore::Alarm::Display);
+    QCOMPARE(alarm->text(), detail.message());
+}
+
+void tst_engine::testItemAttendees()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test attendee participation status"));
+    QOrganizerEventAttendee detail;
+    detail.setName(QStringLiteral("Alice"));
+    detail.setEmailAddress(QStringLiteral("alice@example.org"));
+    detail.setAttendeeId(QStringLiteral("123-456"));
+    item.saveDetail(&detail);
+    QOrganizerEventAttendee detail2;
+    detail2.setName(QStringLiteral("Bob"));
+    detail2.setEmailAddress(QStringLiteral("bob@example.org"));
+    detail2.setAttendeeId(QStringLiteral("123-789"));
+    item.saveDetail(&detail2);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->attendees().count(), 2);
+    KCalendarCore::Attendee::List attendees = incidence->attendees();
+    QList<QOrganizerEventAttendee> refs;
+    refs << detail << detail2;
+    while (!attendees.isEmpty()) {
+        const KCalendarCore::Attendee att = attendees.takeFirst();
+        const QOrganizerEventAttendee detail = refs.takeFirst();
+        QCOMPARE(att.name(), detail.name());
+        QCOMPARE(att.email(), detail.emailAddress());
+        // mKCal does not support attendee uids.
+        // QCOMPARE(att.uid(), detail.attendeeId());
+    }
+}
+
+
+Q_DECLARE_METATYPE(QOrganizerEventAttendee::ParticipationStatus)
+void tst_engine::testItemAttendeeStatus_data()
+{
+    QTest::addColumn<QOrganizerEventAttendee::ParticipationStatus>("status");
+    QTest::addColumn<KCalendarCore::Attendee::PartStat>("partStat");
+
+    QTest::newRow("unknown") << QOrganizerEventAttendee::StatusUnknown
+                      << KCalendarCore::Attendee::NeedsAction;
+    QTest::newRow("accepted") << QOrganizerEventAttendee::StatusAccepted
+                      << KCalendarCore::Attendee::Accepted;
+    QTest::newRow("declined") << QOrganizerEventAttendee::StatusDeclined
+                      << KCalendarCore::Attendee::Declined;
+    QTest::newRow("tentative") << QOrganizerEventAttendee::StatusTentative
+                      << KCalendarCore::Attendee::Tentative;
+    QTest::newRow("delegated") << QOrganizerEventAttendee::StatusDelegated
+                      << KCalendarCore::Attendee::Delegated;
+    QTest::newRow("in process") << QOrganizerEventAttendee::StatusInProcess
+                      << KCalendarCore::Attendee::InProcess;
+    QTest::newRow("completed") << QOrganizerEventAttendee::StatusCompleted
+                      << KCalendarCore::Attendee::Completed;
+}
+
+void tst_engine::testItemAttendeeStatus()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QFETCH(QOrganizerEventAttendee::ParticipationStatus, status);
+    QFETCH(KCalendarCore::Attendee::PartStat, partStat);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test attendee participation status"));
+    QOrganizerEventAttendee detail;
+    detail.setName(QStringLiteral("Alice"));
+    detail.setParticipationStatus(status);
+    item.saveDetail(&detail);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->attendees().count(), 1);
+    const KCalendarCore::Attendee att(incidence->attendees().first());
+    QCOMPARE(att.status(), partStat);
+}
+
+Q_DECLARE_METATYPE(QOrganizerEventAttendee::ParticipationRole)
+void tst_engine::testItemAttendeeRole_data()
+{
+    QTest::addColumn<QOrganizerEventAttendee::ParticipationRole>("role");
+    QTest::addColumn<KCalendarCore::Attendee::Role>("value");
+
+    // Not in KCalendarCore API
+    // QTest::newRow("unknown") << QOrganizerEventAttendee::RoleUnknown
+    //                 << KCalendarCore::Attendee::ReqParticipant;
+    // QTest::newRow("organizer") << QOrganizerEventAttendee::RoleOrganizer
+    //                 << KCalendarCore::Attendee::ReqParticipant;
+    QTest::newRow("chair") << QOrganizerEventAttendee::RoleChairperson
+                      << KCalendarCore::Attendee::Chair;
+    // QTest::newRow("host") << QOrganizerEventAttendee::RoleHost
+    //                 << KCalendarCore::Attendee::ReqParticipant;
+    QTest::newRow("delegated") << QOrganizerEventAttendee::RoleRequiredParticipant
+                      << KCalendarCore::Attendee::ReqParticipant;
+    QTest::newRow("in process") << QOrganizerEventAttendee::RoleOptionalParticipant
+                      << KCalendarCore::Attendee::OptParticipant;
+    QTest::newRow("completed") << QOrganizerEventAttendee::RoleNonParticipant
+                      << KCalendarCore::Attendee::NonParticipant;
+}
+
+void tst_engine::testItemAttendeeRole()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QFETCH(QOrganizerEventAttendee::ParticipationRole, role);
+    QFETCH(KCalendarCore::Attendee::Role, value);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test attendee participation status"));
+    QOrganizerEventAttendee detail;
+    detail.setName(QStringLiteral("Alice"));
+    detail.setParticipationRole(role);
+    item.saveDetail(&detail);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->attendees().count(), 1);
+    const KCalendarCore::Attendee att(incidence->attendees().first());
+    QCOMPARE(att.role(), value);
 }
 
 #include "tst_engine.moc"
