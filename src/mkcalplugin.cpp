@@ -33,7 +33,9 @@
 
 #include "helper.h"
 
-QtOrganizer::QOrganizerManagerEngine* mKCalFactory::engine(const QMap<QString, QString>& parameters, QtOrganizer::QOrganizerManager::Error* error)
+using namespace QtOrganizer;
+
+QOrganizerManagerEngine* mKCalFactory::engine(const QMap<QString, QString>& parameters, QOrganizerManager::Error* error)
 {
     Q_UNUSED(error);
     QString tzname = parameters.value(QStringLiteral("timeZone"));
@@ -41,7 +43,7 @@ QtOrganizer::QOrganizerManagerEngine* mKCalFactory::engine(const QMap<QString, Q
 
     mKCalEngine *engine = new mKCalEngine(QTimeZone(tzname.toUtf8()), dbname);
     if (!engine->isOpened())
-        *error = QtOrganizer::QOrganizerManager::PermissionsError;
+        *error = QOrganizerManager::PermissionsError;
     return engine; // manager takes ownership and will clean up.
 }
 
@@ -100,103 +102,103 @@ void mKCalEngine::storageModified(mKCal::ExtendedStorage *storage,
     emit dataChanged();
 }
 
-QtOrganizer::QOrganizerCollectionId mKCalEngine::defaultCollectionId() const
+QOrganizerCollectionId mKCalEngine::defaultCollectionId() const
 {
     mKCal::Notebook::Ptr nb = mStorage->defaultNotebook();
 
-    return isOpened()
-        ? QtOrganizer::QOrganizerCollectionId(managerUri(), nb->uid().toUtf8())
-        : QtOrganizer::QOrganizerCollectionId();
+    return (isOpened() && nb)
+        ? QOrganizerCollectionId(managerUri(), nb->uid().toUtf8())
+        : QOrganizerCollectionId();
 }
 
-QtOrganizer::QOrganizerCollection mKCalEngine::collection(const QtOrganizer::QOrganizerCollectionId &collectionId,
-                                                          QtOrganizer::QOrganizerManager::Error *error) const
+QOrganizerCollection mKCalEngine::collection(const QOrganizerCollectionId &collectionId,
+                                                          QOrganizerManager::Error *error) const
 {
-    *error = QtOrganizer::QOrganizerManager::NoError;
+    *error = QOrganizerManager::NoError;
     if (isOpened()) {
         mKCal::Notebook::Ptr nb = mStorage->notebook(collectionId.localId());
         if (collectionId.managerUri() == managerUri() && nb) {
             return toCollection(managerUri(), nb);
         } else {
-            *error = QtOrganizer::QOrganizerManager::DoesNotExistError;
+            *error = QOrganizerManager::DoesNotExistError;
         }
     } else {
-        *error = QtOrganizer::QOrganizerManager::PermissionsError;
+        *error = QOrganizerManager::PermissionsError;
     }
 
-    return QtOrganizer::QOrganizerCollection();
+    return QOrganizerCollection();
 }
 
-QList<QtOrganizer::QOrganizerCollection> mKCalEngine::collections(QtOrganizer::QOrganizerManager::Error *error) const
+QList<QOrganizerCollection> mKCalEngine::collections(QOrganizerManager::Error *error) const
 {
-    QList<QtOrganizer::QOrganizerCollection> ret;
+    QList<QOrganizerCollection> ret;
 
-    *error = QtOrganizer::QOrganizerManager::NoError;
+    *error = QOrganizerManager::NoError;
     if (isOpened()) {
         for (const mKCal::Notebook::Ptr &nb : mStorage->notebooks()) {
             ret.append(toCollection(managerUri(), nb));
         }
     } else {
-        *error = QtOrganizer::QOrganizerManager::PermissionsError;
+        *error = QOrganizerManager::PermissionsError;
     }
 
     return ret;
 }
 
-bool mKCalEngine::saveCollection(QtOrganizer::QOrganizerCollection *collection,
-                                 QtOrganizer::QOrganizerManager::Error *error)
+bool mKCalEngine::saveCollection(QOrganizerCollection *collection,
+                                 QOrganizerManager::Error *error)
 {
-    *error = QtOrganizer::QOrganizerManager::NoError;
+    *error = QOrganizerManager::NoError;
     if (isOpened()) {
         if (collection->id().isNull()) {
             mKCal::Notebook::Ptr nb(new mKCal::Notebook);
             updateNotebook(nb, *collection);
             if (!mStorage->addNotebook(nb)) {
-                *error = QtOrganizer::QOrganizerManager::PermissionsError;
+                *error = QOrganizerManager::PermissionsError;
             } else {
-                collection->setId(QtOrganizer::QOrganizerCollectionId(managerUri(),
+                collection->setId(QOrganizerCollectionId(managerUri(),
                                                                       nb->uid().toUtf8()));
-                emit collectionsAdded(QList<QtOrganizer::QOrganizerCollectionId>() << collection->id());
-                emit collectionsModified(QList<QPair<QtOrganizer::QOrganizerCollectionId, QtOrganizer::QOrganizerManager::Operation> >() << QPair<QtOrganizer::QOrganizerCollectionId, QtOrganizer::QOrganizerManager::Operation>(collection->id(), QtOrganizer::QOrganizerManager::Add));
+                emit collectionsAdded(QList<QOrganizerCollectionId>() << collection->id());
+                emit collectionsModified(QList<QPair<QOrganizerCollectionId, QOrganizerManager::Operation> >() << QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(collection->id(), QOrganizerManager::Add));
             }
         } else {
             mKCal::Notebook::Ptr nb = mStorage->notebook(collection->id().localId());
             if (nb) {
                 updateNotebook(nb, *collection);
                 if (!mStorage->updateNotebook(nb)) {
-                    *error = QtOrganizer::QOrganizerManager::PermissionsError;
+                    *error = QOrganizerManager::PermissionsError;
                 } else {
-                    emit collectionsChanged(QList<QtOrganizer::QOrganizerCollectionId>() << collection->id());
-                    emit collectionsModified(QList<QPair<QtOrganizer::QOrganizerCollectionId, QtOrganizer::QOrganizerManager::Operation> >() << QPair<QtOrganizer::QOrganizerCollectionId, QtOrganizer::QOrganizerManager::Operation>(collection->id(), QtOrganizer::QOrganizerManager::Change));
+                    emit collectionsChanged(QList<QOrganizerCollectionId>() << collection->id());
+                    emit collectionsModified(QList<QPair<QOrganizerCollectionId, QOrganizerManager::Operation> >() << QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(collection->id(), QOrganizerManager::Change));
                 }
             } else {
-                *error = QtOrganizer::QOrganizerManager::DoesNotExistError;
+                *error = QOrganizerManager::DoesNotExistError;
             }
         }
     } else {
-        *error = QtOrganizer::QOrganizerManager::PermissionsError;
+        *error = QOrganizerManager::PermissionsError;
     }
 
-    return *error == QtOrganizer::QOrganizerManager::NoError;
+    return *error == QOrganizerManager::NoError;
 }
 
-bool mKCalEngine::removeCollection(const QtOrganizer::QOrganizerCollectionId &collectionId,
-                                   QtOrganizer::QOrganizerManager::Error *error)
+bool mKCalEngine::removeCollection(const QOrganizerCollectionId &collectionId,
+                                   QOrganizerManager::Error *error)
 {
-    *error = QtOrganizer::QOrganizerManager::NoError;
+    *error = QOrganizerManager::NoError;
     if (isOpened() && collectionId.managerUri() == managerUri()) {
         mKCal::Notebook::Ptr nb = mStorage->notebook(collectionId.localId());
         if (nb) {
             if (!mStorage->deleteNotebook(nb)) {
-                *error = QtOrganizer::QOrganizerManager::PermissionsError;
+                *error = QOrganizerManager::PermissionsError;
             } else {
-                emit collectionsRemoved(QList<QtOrganizer::QOrganizerCollectionId>() << collectionId);
-                emit collectionsModified(QList<QPair<QtOrganizer::QOrganizerCollectionId, QtOrganizer::QOrganizerManager::Operation> >() << QPair<QtOrganizer::QOrganizerCollectionId, QtOrganizer::QOrganizerManager::Operation>(collectionId, QtOrganizer::QOrganizerManager::Remove));
+                emit collectionsRemoved(QList<QOrganizerCollectionId>() << collectionId);
+                emit collectionsModified(QList<QPair<QOrganizerCollectionId, QOrganizerManager::Operation> >() << QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(collectionId, QOrganizerManager::Remove));
             }
         }
     } else {
-        *error = QtOrganizer::QOrganizerManager::PermissionsError;
+        *error = QOrganizerManager::PermissionsError;
     }
 
-    return *error == QtOrganizer::QOrganizerManager::NoError;
+    return *error == QOrganizerManager::NoError;
 }
