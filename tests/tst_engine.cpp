@@ -49,6 +49,8 @@
 #include <QOrganizerItemParent>
 #include <QOrganizerEventAttendee>
 #include <QOrganizerEventTime>
+#include <QOrganizerTodoTime>
+#include <QOrganizerTodoProgress>
 
 #include <extendedcalendar.h>
 #include <sqlitestorage.h>
@@ -86,6 +88,8 @@ private slots:
 
     void testRecurringEventIO();
     void testExceptionIO();
+
+    void testSimpleTodoIO();
 private:
     QOrganizerManager *mManager = nullptr;
 };
@@ -799,6 +803,37 @@ void tst_engine::testExceptionIO()
     KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId(),
                                                                  recurId);
     QVERIFY(incidence);
+}
+
+void tst_engine::testSimpleTodoIO()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeTodo);
+    item.setDisplayLabel(QStringLiteral("Test todo"));
+    item.setDescription(QStringLiteral("Test description"));
+    QOrganizerTodoTime time;
+    time.setStartDateTime(QDateTime(QDate(2024, 9, 16),
+                                    QTime(12, 00), QTimeZone("Europe/Paris")));
+    time.setDueDateTime(QDateTime(QDate(2024, 9, 23),
+                                    QTime(12, 00), QTimeZone("Europe/Paris")));
+    item.saveDetail(&time);
+    QOrganizerTodoProgress progress;
+    progress.setPercentageComplete(42);
+    item.saveDetail(&progress);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    dataChanged.clear();
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QCOMPARE(incidence->type(), KCalendarCore::IncidenceBase::TypeTodo);
+    QCOMPARE(incidence->dtStart(), time.startDateTime());
+    QCOMPARE(incidence.staticCast<KCalendarCore::Todo>()->dtDue(), time.dueDateTime());
+    QCOMPARE(incidence.staticCast<KCalendarCore::Todo>()->percentComplete(), progress.percentageComplete());
 }
 
 #include "tst_engine.moc"
