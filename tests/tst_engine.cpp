@@ -45,6 +45,8 @@
 #include <QOrganizerItemAudibleReminder>
 #include <QOrganizerItemEmailReminder>
 #include <QOrganizerItemVisualReminder>
+#include <QOrganizerItemRecurrence>
+#include <QOrganizerItemParent>
 #include <QOrganizerEventAttendee>
 #include <QOrganizerEventTime>
 
@@ -81,6 +83,9 @@ private slots:
     void testItemAttendeeStatus();
     void testItemAttendeeRole_data();
     void testItemAttendeeRole();
+
+    void testRecurringEventIO();
+    void testExceptionIO();
 private:
     QOrganizerManager *mManager = nullptr;
 };
@@ -680,6 +685,120 @@ void tst_engine::testItemAttendeeRole()
     QCOMPARE(incidence->attendees().count(), 1);
     const KCalendarCore::Attendee att(incidence->attendees().first());
     QCOMPARE(att.role(), value);
+}
+
+void tst_engine::testRecurringEventIO()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEvent);
+    item.setDisplayLabel(QStringLiteral("Test recurring event"));
+    QOrganizerEventTime time;
+    time.setStartDateTime(QDateTime(QDate(2024, 9, 17),
+                                    QTime(15, 20), QTimeZone("Europe/Paris")));
+    time.setEndDateTime(time.startDateTime().addSecs(300));
+    item.saveDetail(&time);
+    QOrganizerItemRecurrence recur;
+    recur.setRecurrenceDates(QSet<QDate>()
+                             << QDate(2024, 9, 18) << QDate(2024, 9, 19));
+    QOrganizerRecurrenceRule rule1;
+    rule1.setDaysOfWeek(QSet<Qt::DayOfWeek>() << Qt::Tuesday << Qt::Thursday);
+    rule1.setFrequency(QOrganizerRecurrenceRule::Weekly);
+    rule1.setLimit(QDate(2024, 10, 17));
+    rule1.setInterval(2);
+    QOrganizerRecurrenceRule rule2;
+    rule2.setDaysOfMonth(QSet<int>() << 17 << 18 << 19);
+    rule2.setFrequency(QOrganizerRecurrenceRule::Monthly);
+    rule2.setLimit(3);
+    rule2.setInterval(1);
+    recur.setRecurrenceRules(QSet<QOrganizerRecurrenceRule>() << rule1 << rule2);
+    recur.setExceptionDates(QSet<QDate>()
+                            << QDate(2024, 10, 18) << QDate(2024, 11, 19));
+    item.saveDetail(&recur);
+
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QVERIFY(incidence->recurs());
+    KCalendarCore::Recurrence *recurrence = incidence->recurrence();
+    QCOMPARE(recurrence->rDateTimes().count(), recur.recurrenceDates().count());
+    for (const QDateTime &dt : recurrence->rDateTimes()) {
+        QVERIFY(recur.recurrenceDates().contains(dt.date()));
+    }
+    QCOMPARE(recurrence->exDateTimes().count(), recur.exceptionDates().count());
+    for (const QDateTime &dt : recurrence->exDateTimes()) {
+        QVERIFY(recur.exceptionDates().contains(dt.date()));
+    }
+    QCOMPARE(recurrence->rRules().count(), recur.recurrenceRules().count());
+    for (const KCalendarCore::RecurrenceRule *rule : recurrence->rRules()) {
+        if (rule->recurrenceType() == KCalendarCore::RecurrenceRule::rWeekly) {
+            QCOMPARE(int(rule->frequency()), rule1.interval());
+            QCOMPARE(rule->startDt(), time.startDateTime());
+            QCOMPARE(rule->endDt().date(), rule1.limitDate());
+            QCOMPARE(rule->byDays().count(), rule1.daysOfWeek().count());
+            for (const KCalendarCore::RecurrenceRule::WDayPos &pos : rule->byDays()) {
+                QVERIFY(rule1.daysOfWeek().contains(Qt::DayOfWeek(pos.day())));
+            }
+        } else {
+            QCOMPARE(int(rule->frequency()), rule2.interval());
+            QCOMPARE(rule->startDt(), time.startDateTime());
+            QCOMPARE(rule->duration(), rule2.limitCount());
+            QCOMPARE(rule->byMonthDays().count(), rule2.daysOfMonth().count());
+            for (const int &day : rule->byMonthDays()) {
+                QVERIFY(rule2.daysOfMonth().contains(day));
+            }
+        }
+    }
+}
+
+void tst_engine::testExceptionIO()
+{
+    DbObserver observer;
+    QSignalSpy dataChanged(&observer, &DbObserver::dataChanged);
+
+    QOrganizerItem parent;
+    parent.setType(QOrganizerItemType::TypeEvent);
+    parent.setDisplayLabel(QStringLiteral("Test parent event"));
+    QOrganizerEventTime time;
+    time.setStartDateTime(QDateTime(QDate(2024, 9, 17),
+                                    QTime(15, 50), QTimeZone("Europe/Paris")));
+    time.setEndDateTime(time.startDateTime().addSecs(600));
+    parent.saveDetail(&time);
+    QOrganizerItemRecurrence recur;
+    QOrganizerRecurrenceRule rule1;
+    rule1.setFrequency(QOrganizerRecurrenceRule::Daily);
+    rule1.setLimit(QDate(2024, 9, 24));
+    rule1.setInterval(1);
+    recur.setRecurrenceRules(QSet<QOrganizerRecurrenceRule>() << rule1);
+    parent.saveDetail(&recur);
+    QVERIFY(mManager->saveItem(&parent));
+    QTRY_COMPARE(dataChanged.count(), 1);
+
+    QOrganizerItem item;
+    item.setType(QOrganizerItemType::TypeEventOccurrence);
+    item.setDisplayLabel(QStringLiteral("Test exception event"));
+    QOrganizerEventTime time2;
+    time2.setStartDateTime(QDateTime(QDate(2024, 9, 20),
+                                    QTime(16, 30), QTimeZone("Europe/Paris")));
+    time2.setEndDateTime(time.startDateTime().addSecs(300));
+    item.saveDetail(&time2);
+    QOrganizerItemParent detail;
+    detail.setParentId(parent.id());
+    // Originally on the 19th, moved to the 20th.
+    detail.setOriginalDate(QDate(2024, 9, 19));
+    item.saveDetail(&detail);
+    QVERIFY(mManager->saveItem(&item));
+
+    QTRY_COMPARE(dataChanged.count(), 2);
+    QDateTime recurId = time.startDateTime();
+    recurId.setDate(detail.originalDate());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId(),
+                                                                 recurId);
+    QVERIFY(incidence);
 }
 
 #include "tst_engine.moc"
