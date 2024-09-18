@@ -75,6 +75,9 @@ public:
                    const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask,
                    QMap<int, QtOrganizer::QOrganizerManager::Error> *errorMap,
                    QtOrganizer::QOrganizerManager::Error *error) override;
+    bool removeItems(const QList<QtOrganizer::QOrganizerItemId> &itemIds,
+                     QMap<int, QtOrganizer::QOrganizerManager::Error> *errorMap,
+                     QtOrganizer::QOrganizerManager::Error *error) override;
 
     QtOrganizer::QOrganizerCollectionId defaultCollectionId() const override;
     QtOrganizer::QOrganizerCollection collection(const QtOrganizer::QOrganizerCollectionId &collectionId,

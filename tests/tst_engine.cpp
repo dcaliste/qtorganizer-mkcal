@@ -324,6 +324,11 @@ void tst_engine::testSimpleEventIO()
     QCOMPARE(incidence.staticCast<KCalendarCore::Event>()->dtEnd(), time.endDateTime());
     // mKCal is broken with spaces in comments.
     // QCOMPARE(incidence->comments(), item.comments());
+
+    QVERIFY(mManager->removeItem(item.id()));
+
+    QTRY_COMPARE(dataChanged.count(), 1);
+    QVERIFY(!observer.incidence(item.id().localId()));
 }
 
 Q_DECLARE_METATYPE(QOrganizerItemClassification::AccessClassification)
@@ -803,6 +808,12 @@ void tst_engine::testExceptionIO()
     KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId(),
                                                                  recurId);
     QVERIFY(incidence);
+
+    QVERIFY(mManager->removeItem(parent.id()));
+
+    QTRY_COMPARE(dataChanged.count(), 3);
+    QVERIFY(!observer.incidence(parent.id().localId()));
+    QVERIFY(!observer.incidence(parent.id().localId(), recurId));
 }
 
 void tst_engine::testSimpleTodoIO()

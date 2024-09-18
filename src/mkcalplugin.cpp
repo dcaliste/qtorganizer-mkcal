@@ -142,16 +142,33 @@ void mKCalEngine::storageUpdated(mKCal::ExtendedStorage *storage,
 
     ids.clear();
     ops.clear();
+    QMap<QString, KCalendarCore::Incidence::List> purgeList;
     for (const KCalendarCore::Incidence::Ptr &incidence : deleted) {
         const QOrganizerItemId id(managerUri(), incidence->uid().toUtf8());
         ids << id;
         ops << QPair<QOrganizerItemId, QOrganizerManager::Operation>(id, QOrganizerManager::Remove);
+        // if the incidence was stored in a local (non-synced) notebook, purge it.
+        mKCal::Notebook::Ptr notebook = mStorage->notebook(mCalendars->notebook(incidence));
+        if (notebook
+            && notebook->isMaster()
+            && !notebook->isShared()
+            && notebook->pluginName().isEmpty()) {
+            QMap<QString, KCalendarCore::Incidence::List>::Iterator it = purgeList.find(notebook->uid());
+            if (it == purgeList.end()) {
+                purgeList.insert(notebook->uid(), KCalendarCore::Incidence::List() << incidence);
+            } else {
+                it->append(incidence);
+            }
+        }
     }
     if (!ids.isEmpty()) {
         emit itemsRemoved(ids);
     }
     if (!ops.isEmpty()) {
         emit itemsModified(ops);
+    }
+    for (QMap<QString, KCalendarCore::Incidence::List>::ConstIterator it = purgeList.constBegin(); it != purgeList.constEnd(); ++it) {
+        mStorage->purgeDeletedIncidences(it.value(), it.key());
     }
 }
 
@@ -238,6 +255,35 @@ bool mKCalEngine::saveItems(QList<QOrganizerItem> *items,
             } else if (item.id().managerUri() == managerUri()) {
                 if (!mCalendars->updateItem(item, detailMask)) {
                     errorMap->insert(index, QOrganizerManager::DoesNotExistError);
+                }
+            } else {
+                *error = QOrganizerManager::DoesNotExistError;
+            }
+            index += 1;
+        }
+        if (!mStorage->save()) {
+            *error = QOrganizerManager::PermissionsError;
+        }
+    } else {
+        *error = QOrganizerManager::PermissionsError;
+    }
+
+    return (*error == QOrganizerManager::NoError)
+        && errorMap->isEmpty();
+}
+
+bool mKCalEngine::removeItems(const QList<QOrganizerItemId> &itemIds,
+                              QMap<int, QOrganizerManager::Error> *errorMap,
+                              QOrganizerManager::Error *error)
+{
+    *error = QOrganizerManager::NoError;
+    if (isOpened()) {
+        int index = 0;
+        for (const QOrganizerItemId &id : itemIds) {
+            if (id.managerUri() == managerUri() && !id.localId().isEmpty()) {
+                KCalendarCore::Incidence::Ptr doomed = mCalendars->incidence(id.localId());
+                if (doomed && !mCalendars->deleteIncidence(doomed)) {
+                    errorMap->insert(index, QOrganizerManager::PermissionsError);
                 }
             } else {
                 *error = QOrganizerManager::DoesNotExistError;
