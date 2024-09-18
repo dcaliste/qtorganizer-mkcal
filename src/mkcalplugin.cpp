@@ -31,8 +31,6 @@
 
 #include "mkcalplugin.h"
 
-#include <QtOrganizer/QOrganizerItemParent>
-
 #include "helper.h"
 
 using namespace QtOrganizer;
@@ -57,7 +55,7 @@ QString mKCalFactory::managerName() const
 mKCalEngine::mKCalEngine(const QTimeZone &timeZone, const QString &databaseName,
                          QObject *parent)
     : QOrganizerManagerEngine(parent)
-    , mCalendars(new mKCal::ExtendedCalendar(timeZone))
+    , mCalendars(new ItemCalendars(timeZone))
 {
     if (databaseName.isEmpty()) {
         mStorage = mKCal::SqliteStorage::Ptr(new mKCal::SqliteStorage(mCalendars));
@@ -226,106 +224,25 @@ bool mKCalEngine::saveItems(QList<QOrganizerItem> *items,
                             QMap<int, QOrganizerManager::Error> *errorMap,
                             QOrganizerManager::Error *error)
 {
-    int index = 0;
     *error = QOrganizerManager::NoError;
     if (isOpened()) {
+        int index = 0;
         for (QOrganizerItem &item : *items) {
             if (item.id().isNull()) {
-                // Need to sort *items to insert parent first.
-                KCalendarCore::Incidence::Ptr incidence;
-                switch (item.type()) {
-                case QOrganizerItemType::TypeEvent:
-                    incidence = KCalendarCore::Incidence::Ptr(new KCalendarCore::Event);
-                    updateEvent(incidence.staticCast<KCalendarCore::Event>(), item);
-                    break;
-                case QOrganizerItemType::TypeEventOccurrence: {
-                    const QOrganizerItemParent detail(item.detail(QOrganizerItemDetail::TypeParent));
-                    const QString uid = QString::fromUtf8(detail.parentId().localId());
-                    KCalendarCore::Incidence::Ptr parent = mCalendars->incidence(uid);
-                    if (parent) {
-                        QDateTime recurId = parent->dtStart();
-                        recurId.setDate(detail.originalDate());
-                        incidence = mCalendars->createException(parent, recurId);
-                        updateEvent(incidence.staticCast<KCalendarCore::Event>(), item);
-                    }
-                    break;
-                }
-                case QOrganizerItemType::TypeTodo:
-                    incidence = KCalendarCore::Incidence::Ptr(new KCalendarCore::Todo);
-                    updateTodo(incidence.staticCast<KCalendarCore::Todo>(), item);
-                    break;
-                case QOrganizerItemType::TypeTodoOccurrence: {
-                    const QOrganizerItemParent detail(item.detail(QOrganizerItemDetail::TypeParent));
-                    const QString uid = QString::fromUtf8(detail.parentId().localId());
-                    KCalendarCore::Incidence::Ptr parent = mCalendars->incidence(uid);
-                    if (parent) {
-                        QDateTime recurId = parent->dtStart();
-                        recurId.setDate(detail.originalDate());
-                        incidence = mCalendars->createException(parent, recurId);
-                        updateTodo(incidence.staticCast<KCalendarCore::Todo>(), item);
-                    }
-                    break;
-                }
-                case QOrganizerItemType::TypeJournal:
-                    incidence = KCalendarCore::Incidence::Ptr(new KCalendarCore::Journal);
-                    updateJournal(incidence.staticCast<KCalendarCore::Journal>(), item);
-                    break;
-                default:
+                const QByteArray localId = mCalendars->addItem(item);
+                if (localId.isEmpty()) {
                     errorMap->insert(index, QOrganizerManager::InvalidItemTypeError);
-                }
-                if (incidence) {
-                    bool valid;
-                    const QString nbuid = QString::fromUtf8(item.collectionId().localId());
-                    if (nbuid.isEmpty()) {
-                        valid = mCalendars->addIncidence(incidence);
-                    } else {
-                        valid = mCalendars->addIncidence(incidence, nbuid);
-                    }
-                    if (valid) {
-                        item.setId(QOrganizerItemId(managerUri(),
-                                                                 incidence->uid().toUtf8()));
-                    }
+                } else {
+                    item.setId(QOrganizerItemId(managerUri(), localId));
                 }
             } else if (item.id().managerUri() == managerUri()) {
-                QOrganizerItemParent detail = item.detail(QOrganizerItemDetail::TypeParent);
-                const QString uid = QString::fromUtf8(detail.isEmpty()
-                                                      ? item.id().localId()
-                                                      : detail.parentId().localId());
-                QDateTime recurId;
-                KCalendarCore::Incidence::Ptr incidence;
-                switch (item.type()) {
-                case QOrganizerItemType::TypeEventOccurrence:
-                    if (!detail.isEmpty()) {
-                        KCalendarCore::Incidence::Ptr parent = mCalendars->event(uid);
-                        recurId = parent->dtStart();
-                        recurId.setDate(detail.originalDate());
-                    }
-                    // Fallthrough
-                case QOrganizerItemType::TypeEvent:
-                    incidence = mCalendars->event(uid, recurId);
-                    updateEvent(incidence.staticCast<KCalendarCore::Event>(), item, detailMask);
-                    break;
-                case QOrganizerItemType::TypeTodoOccurrence:
-                    if (!detail.isEmpty()) {
-                        KCalendarCore::Incidence::Ptr parent = mCalendars->event(uid);
-                        recurId = parent->dtStart();
-                        recurId.setDate(detail.originalDate());
-                    }
-                    // Fallthrough
-                case QOrganizerItemType::TypeTodo:
-                    incidence = mCalendars->todo(uid, recurId);
-                    updateTodo(incidence.staticCast<KCalendarCore::Todo>(), item, detailMask);
-                    break;
-                case QOrganizerItemType::TypeJournal:
-                    incidence = mCalendars->journal(uid);
-                    updateJournal(incidence.staticCast<KCalendarCore::Journal>(), item, detailMask);
-                    break;
-                default:
+                if (!mCalendars->updateItem(item, detailMask)) {
                     errorMap->insert(index, QOrganizerManager::DoesNotExistError);
                 }
             } else {
                 *error = QOrganizerManager::DoesNotExistError;
             }
+            index += 1;
         }
         if (!mStorage->save()) {
             *error = QOrganizerManager::PermissionsError;
@@ -334,7 +251,8 @@ bool mKCalEngine::saveItems(QList<QOrganizerItem> *items,
         *error = QOrganizerManager::PermissionsError;
     }
 
-    return *error == QOrganizerManager::NoError;
+    return (*error == QOrganizerManager::NoError)
+        && errorMap->isEmpty();
 }
 
 QOrganizerCollectionId mKCalEngine::defaultCollectionId() const

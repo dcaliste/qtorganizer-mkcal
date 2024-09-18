@@ -29,17 +29,21 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
  */
 
-#ifndef HELPER_H
-#define HELPER_H
+#ifndef ITEMCALENDARS_H
+#define ITEMCALENDARS_H
 
-#include <QtOrganizer/QOrganizerCollection>
+#include <extendedcalendar.h>
 
-#include <notebook.h>
+#include <QtOrganizer/QOrganizerItem>
 
-QtOrganizer::QOrganizerCollection toCollection(const QString &managerUri,
-                                               const mKCal::Notebook::Ptr &nb);
+class ItemCalendars: public mKCal::ExtendedCalendar
+{
+public:
+    ItemCalendars(const QTimeZone &timezone);
 
-void updateNotebook(mKCal::Notebook::Ptr nb,
-                    const QtOrganizer::QOrganizerCollection &collection);
+    QByteArray addItem(const QtOrganizer::QOrganizerItem &item);
+    bool updateItem(const QtOrganizer::QOrganizerItem &item,
+                    const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask = QList<QtOrganizer::QOrganizerItemDetail::DetailType>());
+};
 
 #endif

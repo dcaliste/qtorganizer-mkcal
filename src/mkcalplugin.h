@@ -32,11 +32,14 @@
 #ifndef MKCALPLUGIN_H
 #define MKCALPLUGIN_H
 
+#include <QSharedPointer>
+
 #include <QOrganizerManagerEngineFactoryInterface>
 #include <QOrganizerManagerEngine>
 
-#include <extendedcalendar.h>
 #include <sqlitestorage.h>
+
+#include "itemcalendars.h"
 
 class mKCalFactory : public QtOrganizer::QOrganizerManagerEngineFactory
 {
@@ -89,7 +92,7 @@ private:
                         const KCalendarCore::Incidence::List &modified,
                         const KCalendarCore::Incidence::List &deleted) override;
 
-    mKCal::ExtendedCalendar::Ptr mCalendars;
+    QSharedPointer<ItemCalendars> mCalendars;
     mKCal::SqliteStorage::Ptr mStorage;
     bool mOpened = false;
 };
