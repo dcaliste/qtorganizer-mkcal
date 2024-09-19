@@ -114,6 +114,10 @@ public:
     {
         return mCalendar->instance(QString::fromUtf8(id.localId()));
     }
+    QString notebookUid(const KCalendarCore::Incidence::Ptr &incidence)
+    {
+        return mCalendar->notebook(incidence);
+    }
 
 signals:
     void dataChanged();
@@ -317,6 +321,8 @@ void tst_engine::testSimpleEventIO()
     dataChanged.clear();
     KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
+    QCOMPARE(observer.notebookUid(incidence).toUtf8(),
+             mManager->defaultCollectionId().localId());
     QCOMPARE(incidence->type(), KCalendarCore::IncidenceBase::TypeEvent);
     QCOMPARE(incidence->summary(), item.displayLabel());
     QCOMPARE(incidence->description(), item.description());
@@ -331,6 +337,7 @@ void tst_engine::testSimpleEventIO()
 
     QOrganizerItem read = manager.item(item.id());
     QVERIFY(!read.isEmpty());
+    QCOMPARE(read.collectionId(), item.collectionId());
     QCOMPARE(read.displayLabel(), item.displayLabel());
     QCOMPARE(read.description(), item.description());
     // mKCal is broken with spaces in comments.

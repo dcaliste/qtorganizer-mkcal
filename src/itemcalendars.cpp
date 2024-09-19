@@ -703,6 +703,8 @@ QOrganizerItem ItemCalendars::item(const QOrganizerItemId &id) const
     KCalendarCore::Incidence::Ptr incidence = instance(id.localId());
     if (incidence) {
         item.setId(id);
+        item.setCollectionId(QOrganizerCollectionId(id.managerUri(),
+                                                    notebook(incidence).toUtf8()));
         switch (incidence->type()) {
         case KCalendarCore::Incidence::TypeEvent:
             toItemEvent(&item, incidence.staticCast<KCalendarCore::Event>());
@@ -723,7 +725,10 @@ QOrganizerItem ItemCalendars::item(const QOrganizerItemId &id) const
 
 QByteArray ItemCalendars::addItem(const QOrganizerItem &item)
 {
-    // Need to sort *items to insert parent first.
+    if (item.collectionId().isNull()) {
+        return QByteArray();
+    }
+
     KCalendarCore::Incidence::Ptr newIncidence;
     switch (item.type()) {
     case QOrganizerItemType::TypeEvent:
@@ -765,17 +770,10 @@ QByteArray ItemCalendars::addItem(const QOrganizerItem &item)
     default:
         break;
     }
-    if (newIncidence) {
-        bool valid;
-        const QString nbuid = QString::fromUtf8(item.collectionId().localId());
-        if (nbuid.isEmpty()) {
-            valid = addIncidence(newIncidence);
-        } else {
-            valid = addIncidence(newIncidence, nbuid);
-        }
-        if (valid) {
-            return newIncidence->instanceIdentifier().toUtf8();
-        }
+    if (newIncidence
+        && addIncidence(newIncidence,
+                        QString::fromUtf8(item.collectionId().localId()))) {
+        return newIncidence->instanceIdentifier().toUtf8();
     }
     return QByteArray();
 }

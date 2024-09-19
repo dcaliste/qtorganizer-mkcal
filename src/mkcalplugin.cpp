@@ -259,7 +259,7 @@ QList<QOrganizerItem> mKCalEngine::items(const QList<QOrganizerItemId> &itemIds,
                 *error = QOrganizerManager::DoesNotExistError;
             }
             index += 1;
-        }        
+        }
     } else {
         *error = QOrganizerManager::PermissionsError;
     }
@@ -277,6 +277,9 @@ bool mKCalEngine::saveItems(QList<QOrganizerItem> *items,
         int index = 0;
         for (QOrganizerItem &item : *items) {
             if (item.id().isNull()) {
+                if (item.collectionId().isNull()) {
+                    item.setCollectionId(defaultCollectionId());
+                }
                 const QByteArray localId = mCalendars->addItem(item);
                 if (localId.isEmpty()) {
                     errorMap->insert(index, QOrganizerManager::InvalidItemTypeError);
