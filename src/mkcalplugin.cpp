@@ -241,15 +241,13 @@ QList<QOrganizerItem> mKCalEngine::items(const QList<QOrganizerItemId> &itemIds,
                                          QMap<int, QOrganizerManager::Error> *errorMap,
                                          QOrganizerManager::Error *error)
 {
-    Q_UNUSED(fetchHint);
-
     QList<QOrganizerItem> items;
     if (isOpened()) {
         int index = 0;
         for (const QOrganizerItemId &id : itemIds) {
             if (id.managerUri() == managerUri()
                 && mStorage->loadIncidenceInstance(id.localId())) {
-                const QOrganizerItem item = mCalendars->item(id);
+                const QOrganizerItem item = mCalendars->item(id, fetchHint.detailTypesHint());
                 if (!item.isEmpty()) {
                     items.append(item);
                 } else {

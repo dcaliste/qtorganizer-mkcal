@@ -35,13 +35,15 @@
 #include <extendedcalendar.h>
 
 #include <QtOrganizer/QOrganizerItem>
+#include <QtOrganizer/QOrganizerItemDetail>
 
 class ItemCalendars: public mKCal::ExtendedCalendar
 {
 public:
     ItemCalendars(const QTimeZone &timezone);
 
-    QtOrganizer::QOrganizerItem item(const QtOrganizer::QOrganizerItemId &id) const;
+    QtOrganizer::QOrganizerItem item(const QtOrganizer::QOrganizerItemId &id,
+                                     const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &details = QList<QtOrganizer::QOrganizerItemDetail::DetailType>()) const;
     
     QByteArray addItem(const QtOrganizer::QOrganizerItem &item);
     bool updateItem(const QtOrganizer::QOrganizerItem &item,
