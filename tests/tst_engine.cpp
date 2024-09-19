@@ -325,6 +325,21 @@ void tst_engine::testSimpleEventIO()
     // mKCal is broken with spaces in comments.
     // QCOMPARE(incidence->comments(), item.comments());
 
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QCOMPARE(read.displayLabel(), item.displayLabel());
+    QCOMPARE(read.description(), item.description());
+    // mKCal is broken with spaces in comments.
+    // QCOMPARE(read.comments(), item.comments());
+    QOrganizerEventTime t(read.detail(QOrganizerItemDetail::TypeEventTime));
+    QCOMPARE(t.startDateTime(), time.startDateTime());
+    QCOMPARE(t.endDateTime(), time.endDateTime());
+    QCOMPARE(t.isAllDay(), time.isAllDay());
+
     QVERIFY(mManager->removeItem(item.id()));
 
     QTRY_COMPARE(dataChanged.count(), 1);
@@ -366,6 +381,15 @@ void tst_engine::testItemClassification()
     KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->secrecy(), secrecy);
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerItemClassification value(read.detail(QOrganizerItemDetail::TypeClassification));
+    QCOMPARE(value.classification(), detail.classification());
 }
 
 void tst_engine::testItemLocation()
@@ -390,6 +414,17 @@ void tst_engine::testItemLocation()
     QCOMPARE(incidence->location(), detail.label());
     QCOMPARE(incidence->geoLatitude(), float(detail.latitude()));
     QCOMPARE(incidence->geoLongitude(), float(detail.longitude()));
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerItemLocation value(read.detail(QOrganizerItemDetail::TypeLocation));
+    QCOMPARE(value.label(), detail.label());
+    QCOMPARE(float(value.latitude()), float(detail.latitude()));
+    QCOMPARE(float(value.longitude()), float(detail.longitude()));
 }
 
 Q_DECLARE_METATYPE(QOrganizerItemPriority::Priority)
@@ -430,6 +465,15 @@ void tst_engine::testItemPriority()
     KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->priority(), value);
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerItemPriority p(read.detail(QOrganizerItemDetail::TypePriority));
+    QCOMPARE(p.priority(), detail.priority());
 }
 
 void tst_engine::testItemTimestamp()
@@ -454,6 +498,16 @@ void tst_engine::testItemTimestamp()
     QVERIFY(incidence);
     QCOMPARE(incidence->created(), detail.created());
     QCOMPARE(incidence->lastModified(), detail.lastModified());
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerItemTimestamp value(read.detail(QOrganizerItemDetail::TypeTimestamp));
+    QCOMPARE(value.created(), detail.created());
+    QCOMPARE(value.lastModified(), detail.lastModified());
 }
 
 void tst_engine::testItemVersion()
@@ -474,6 +528,15 @@ void tst_engine::testItemVersion()
     KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->revision(), detail.version());
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerItemVersion value(read.detail(QOrganizerItemDetail::TypeVersion));
+    QCOMPARE(value.version(), detail.version());
 }
 
 void tst_engine::testItemAudibleReminder()
@@ -503,6 +566,19 @@ void tst_engine::testItemAudibleReminder()
     QVERIFY(!alarm->hasEndOffset());
     QCOMPARE(alarm->snoozeTime().asSeconds(), detail.repetitionDelay());
     QCOMPARE(alarm->repeatCount(), detail.repetitionCount());
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerItemAudibleReminder value(read.detail(QOrganizerItemDetail::TypeAudibleReminder));
+    QVERIFY(!value.isEmpty());
+    QCOMPARE(value.dataUrl(), detail.dataUrl());
+    QCOMPARE(value.secondsBeforeStart(), detail.secondsBeforeStart());
+    QCOMPARE(value.repetitionDelay(), detail.repetitionDelay());
+    QCOMPARE(value.repetitionCount(), detail.repetitionCount());
 }
 
 void tst_engine::testItemEmailReminder()
@@ -535,6 +611,17 @@ void tst_engine::testItemEmailReminder()
     //for (const KCalendarCore::Person &person : alarm->mailAddresses()) {
     //    QVERIFY(detail.recipients().contains(person.fullName()));
     //}
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerItemEmailReminder value(read.detail(QOrganizerItemDetail::TypeEmailReminder));
+    QVERIFY(!value.isEmpty());
+    QCOMPARE(value.subject(), detail.subject());
+    QCOMPARE(value.body(), detail.body());
 }
 
 void tst_engine::testItemVisualReminder()
@@ -558,6 +645,16 @@ void tst_engine::testItemVisualReminder()
     KCalendarCore::Alarm::Ptr alarm = incidence->alarms().first();
     QCOMPARE(alarm->type(), KCalendarCore::Alarm::Display);
     QCOMPARE(alarm->text(), detail.message());
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerItemVisualReminder value(read.detail(QOrganizerItemDetail::TypeVisualReminder));
+    QVERIFY(!value.isEmpty());
+    QCOMPARE(value.message(), detail.message());
 }
 
 void tst_engine::testItemAttendees()
@@ -596,8 +693,26 @@ void tst_engine::testItemAttendees()
         // mKCal does not support attendee uids.
         // QCOMPARE(att.uid(), detail.attendeeId());
     }
-}
 
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QList<QOrganizerItemDetail> value(read.details(QOrganizerItemDetail::TypeEventAttendee));
+    QCOMPARE(value.count(), 2);
+    refs.clear();
+    refs << detail << detail2;
+    while (!value.isEmpty()) {
+        const QOrganizerEventAttendee att = value.takeFirst();
+        const QOrganizerEventAttendee detail = refs.takeFirst();
+        QCOMPARE(att.name(), detail.name());
+        QCOMPARE(att.emailAddress(), detail.emailAddress());
+        // mKCal does not support attendee uids.
+        // QCOMPARE(att.uid(), detail.attendeeId());
+    }
+}
 
 Q_DECLARE_METATYPE(QOrganizerEventAttendee::ParticipationStatus)
 void tst_engine::testItemAttendeeStatus_data()
@@ -645,6 +760,16 @@ void tst_engine::testItemAttendeeStatus()
     QCOMPARE(incidence->attendees().count(), 1);
     const KCalendarCore::Attendee att(incidence->attendees().first());
     QCOMPARE(att.status(), partStat);
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerEventAttendee value(read.detail(QOrganizerItemDetail::TypeEventAttendee));
+    QVERIFY(!value.isEmpty());
+    QCOMPARE(value.participationStatus(), detail.participationStatus());
 }
 
 Q_DECLARE_METATYPE(QOrganizerEventAttendee::ParticipationRole)
@@ -694,6 +819,16 @@ void tst_engine::testItemAttendeeRole()
     QCOMPARE(incidence->attendees().count(), 1);
     const KCalendarCore::Attendee att(incidence->attendees().first());
     QCOMPARE(att.role(), value);
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerEventAttendee a(read.detail(QOrganizerItemDetail::TypeEventAttendee));
+    QVERIFY(!a.isEmpty());
+    QCOMPARE(a.participationRole(), detail.participationRole());
 }
 
 void tst_engine::testRecurringEventIO()
@@ -763,6 +898,18 @@ void tst_engine::testRecurringEventIO()
         }
     }
 
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerItemRecurrence r(read.detail(QOrganizerItemDetail::TypeRecurrence));
+    QCOMPARE(r.recurrenceDates(), recur.recurrenceDates());
+    QCOMPARE(r.recurrenceRules(), recur.recurrenceRules());
+    QCOMPARE(r.exceptionDates(), recur.exceptionDates());
+    QCOMPARE(r.exceptionRules(), recur.exceptionRules());
+
     QOrganizerItem occurrence;
     occurrence.setType(QOrganizerItemType::TypeEventOccurrence);
     QOrganizerItemParent detail;
@@ -821,6 +968,17 @@ void tst_engine::testExceptionIO()
     KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
 
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QOrganizerItemParent p(read.detail(QOrganizerItemDetail::TypeParent));
+    QVERIFY(!p.isEmpty());
+    QCOMPARE(p.parentId(), detail.parentId());
+    QCOMPARE(p.originalDate(), detail.originalDate());
+
     QVERIFY(mManager->removeItem(parent.id()));
 
     QTRY_COMPARE(dataChanged.count(), 3);
@@ -841,10 +999,13 @@ void tst_engine::testSimpleTodoIO()
     time.setStartDateTime(QDateTime(QDate(2024, 9, 16),
                                     QTime(12, 00), QTimeZone("Europe/Paris")));
     time.setDueDateTime(QDateTime(QDate(2024, 9, 23),
-                                    QTime(12, 00), QTimeZone("Europe/Paris")));
+                                  QTime(12, 00), QTimeZone("Europe/Paris")));
     item.saveDetail(&time);
     QOrganizerTodoProgress progress;
     progress.setPercentageComplete(42);
+    // KCalendarCore can not put a finished date for a percentage != 100
+    // progress.setFinishedDateTime(QDateTime(QDate(2024, 9, 21),
+    //                                        QTime(9, 00), QTimeZone("Europe/Paris")));
     item.saveDetail(&progress);
 
     QVERIFY(mManager->saveItem(&item));
@@ -857,6 +1018,23 @@ void tst_engine::testSimpleTodoIO()
     QCOMPARE(incidence->dtStart(), time.startDateTime());
     QCOMPARE(incidence.staticCast<KCalendarCore::Todo>()->dtDue(), time.dueDateTime());
     QCOMPARE(incidence.staticCast<KCalendarCore::Todo>()->percentComplete(), progress.percentageComplete());
+    // QCOMPARE(incidence.staticCast<KCalendarCore::Todo>()->completed(), progress.finishedDateTime());
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerItem read = manager.item(item.id());
+    QVERIFY(!read.isEmpty());
+    QCOMPARE(read.displayLabel(), item.displayLabel());
+    QCOMPARE(read.description(), item.description());
+    QOrganizerTodoTime t(read.detail(QOrganizerItemDetail::TypeTodoTime));
+    QCOMPARE(t.startDateTime(), time.startDateTime());
+    QCOMPARE(t.dueDateTime(), time.dueDateTime());
+    QCOMPARE(t.isAllDay(), time.isAllDay());
+    QOrganizerTodoProgress p(read.detail(QOrganizerItemDetail::TypeTodoProgress));
+    QCOMPARE(p.percentageComplete(), progress.percentageComplete());
+    // QCOMPARE(p.finishedDateTime(), progress.finishedDateTime());
 }
 
 #include "tst_engine.moc"

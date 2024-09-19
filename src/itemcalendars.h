@@ -41,6 +41,8 @@ class ItemCalendars: public mKCal::ExtendedCalendar
 public:
     ItemCalendars(const QTimeZone &timezone);
 
+    QtOrganizer::QOrganizerItem item(const QtOrganizer::QOrganizerItemId &id) const;
+    
     QByteArray addItem(const QtOrganizer::QOrganizerItem &item);
     bool updateItem(const QtOrganizer::QOrganizerItem &item,
                     const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask = QList<QtOrganizer::QOrganizerItemDetail::DetailType>());

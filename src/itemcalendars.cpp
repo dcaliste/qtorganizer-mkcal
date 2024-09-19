@@ -394,9 +394,331 @@ static void updateJournal(KCalendarCore::Journal::Ptr journal,
     }
 }
 
+static void toItemReminder(QOrganizerItemReminder *reminder,
+                           const KCalendarCore::Alarm::Ptr &alarm)
+{
+    reminder->setSecondsBeforeStart(alarm->startOffset().asSeconds());
+    reminder->setRepetition(alarm->repeatCount(), alarm->snoozeTime().asSeconds());
+}
+
+static QOrganizerRecurrenceRule fromRecurrenceRule(const KCalendarCore::RecurrenceRule &rule)
+{
+    QOrganizerRecurrenceRule result;
+
+    switch (rule.recurrenceType()) {
+    case KCalendarCore::RecurrenceRule::rDaily:
+        result.setFrequency(QOrganizerRecurrenceRule::Daily);
+        break;
+    case KCalendarCore::RecurrenceRule::rWeekly:
+        result.setFrequency(QOrganizerRecurrenceRule::Weekly);
+        break;
+    case KCalendarCore::RecurrenceRule::rMonthly:
+        result.setFrequency(QOrganizerRecurrenceRule::Monthly);
+        break;
+    case KCalendarCore::RecurrenceRule::rYearly:
+        result.setFrequency(QOrganizerRecurrenceRule::Yearly);
+        break;
+    default:
+        result.setFrequency(QOrganizerRecurrenceRule::Invalid);
+    }
+    result.setInterval(rule.frequency());
+    if (rule.duration() > 0) {
+        result.setLimit(rule.duration());
+    } else if (rule.duration() == 0) {
+        result.setLimit(rule.endDt().date());
+    }
+    if (!rule.byDays().isEmpty()) {
+        QSet<Qt::DayOfWeek> days;
+        for (const KCalendarCore::RecurrenceRule::WDayPos pos : rule.byDays()) {
+            days.insert(Qt::DayOfWeek(pos.day()));
+        }
+        result.setDaysOfWeek(days);
+    } else if (!rule.byMonthDays().isEmpty()) {
+        QSet<int> days;
+        for (int day : rule.byMonthDays()) {
+            days.insert(day);
+        }
+        result.setDaysOfMonth(days);
+    } else if (!rule.byYearDays().isEmpty()) {
+        QSet<int> days;
+        for (int day : rule.byYearDays()) {
+            days.insert(day);
+        }
+        result.setDaysOfYear(days);
+    } else if (!rule.byMonths().isEmpty()) {
+        QSet<QOrganizerRecurrenceRule::Month> months;
+        for (const int &month : rule.byMonths()) {
+            months.insert(QOrganizerRecurrenceRule::Month(month));
+        }
+        result.setMonthsOfYear(months);
+    } else if (!rule.byWeekNumbers().isEmpty()) {
+        QSet<int> weeks;
+        for (int week : rule.byWeekNumbers()) {
+            weeks.insert(week);
+        }
+        result.setWeeksOfYear(weeks);
+    } else if (!rule.bySetPos().isEmpty()) {
+        QSet<int> pos;
+        for (int p : rule.bySetPos()) {
+            pos.insert(p);
+        }
+        result.setPositions(pos);
+    }
+
+    return result;
+}
+
+static void toItemIncidence(QOrganizerItem *item,
+                            const KCalendarCore::Incidence::Ptr &incidence)
+{
+    item->setDisplayLabel(incidence->summary());
+    item->setDescription(incidence->description());
+    item->setComments(incidence->comments());
+    if (incidence->dirtyFields().contains(KCalendarCore::Incidence::FieldSecrecy)) {
+        QOrganizerItemClassification classification;
+        switch (incidence->secrecy()) {
+        case KCalendarCore::Incidence::SecrecyPrivate:
+            classification.setClassification(QOrganizerItemClassification::AccessPrivate);
+            break;
+        case KCalendarCore::Incidence::SecrecyConfidential:
+            classification.setClassification(QOrganizerItemClassification::AccessConfidential);
+            break;
+        default:
+            classification.setClassification(QOrganizerItemClassification::AccessPublic);
+            break;
+        }
+        item->saveDetail(&classification);
+    }
+    if (!incidence->location().isEmpty() || incidence->hasGeo()) {
+        QOrganizerItemLocation loc;
+        loc.setLabel(incidence->location());
+        if (incidence->hasGeo()) {
+            loc.setLatitude(incidence->geoLatitude());
+            loc.setLongitude(incidence->geoLongitude());
+        }
+        item->saveDetail(&loc);
+    }
+    if (incidence->dirtyFields().contains(KCalendarCore::Incidence::FieldPriority)) {
+        QOrganizerItemPriority priority;
+        priority.setPriority(QOrganizerItemPriority::Priority(incidence->priority()));
+        item->saveDetail(&priority);
+    }
+    if (incidence->dirtyFields().contains(KCalendarCore::Incidence::FieldCreated)
+        || incidence->dirtyFields().contains(KCalendarCore::Incidence::FieldLastModified)) {
+        QOrganizerItemTimestamp stamp;
+        stamp.setCreated(incidence->created());
+        stamp.setLastModified(incidence->lastModified());
+        item->saveDetail(&stamp);
+    }
+    if (incidence->dirtyFields().contains(KCalendarCore::Incidence::FieldRevision)) {
+        QOrganizerItemVersion stamp;
+        stamp.setVersion(incidence->revision());
+        item->saveDetail(&stamp);
+    }
+    for (const KCalendarCore::Alarm::Ptr alarm : incidence->alarms()) {
+        switch (alarm->type()) {
+        case KCalendarCore::Alarm::Audio: {
+            QOrganizerItemAudibleReminder audio;
+            audio.setDataUrl(QUrl(alarm->audioFile()));
+            toItemReminder(&audio, alarm);
+            item->saveDetail(&audio);
+            break;
+        }
+        case KCalendarCore::Alarm::Email: {
+            QOrganizerItemEmailReminder email;
+            email.setContents(alarm->mailSubject(), alarm->mailText(), QVariantList());
+            QStringList recipients;
+            for (const KCalendarCore::Person &person : alarm->mailAddresses()) {
+                recipients.append(person.fullName());
+            }
+            email.setRecipients(recipients);
+            toItemReminder(&email, alarm);
+            item->saveDetail(&email);
+            break;
+        }
+        case KCalendarCore::Alarm::Display: {
+            QOrganizerItemVisualReminder visual;
+            visual.setMessage(alarm->text());
+            toItemReminder(&visual, alarm);
+            item->saveDetail(&visual);
+            break;
+        }
+        default:
+            break;
+        }
+    }
+    if (incidence->recurs()) {
+        QOrganizerItemRecurrence recurrence;
+        QSet<QDate> rdates;
+        if (incidence->allDay()) {
+            for (const QDate &date : incidence->recurrence()->rDates()) {
+                rdates.insert(date);
+            }
+        } else {
+            for (const QDateTime &dt : incidence->recurrence()->rDateTimes()) {
+                rdates.insert(dt.date());
+            }
+        }
+        recurrence.setRecurrenceDates(rdates);
+        QSet<QOrganizerRecurrenceRule> rrules;
+        for (const KCalendarCore::RecurrenceRule *rule : incidence->recurrence()->rRules()) {
+            rrules.insert(fromRecurrenceRule(*rule));
+        }
+        recurrence.setRecurrenceRules(rrules);
+        QSet<QDate> exdates;
+        if (incidence->allDay()) {
+            for (const QDate &date : incidence->recurrence()->exDates()) {
+                exdates.insert(date);
+            }
+        } else {
+            for (const QDateTime &dt : incidence->recurrence()->exDateTimes()) {
+                exdates.insert(dt.date());
+            }
+        }
+        recurrence.setExceptionDates(exdates);
+        QSet<QOrganizerRecurrenceRule> exrules;
+        for (const KCalendarCore::RecurrenceRule *rule : incidence->recurrence()->exRules()) {
+            exrules.insert(fromRecurrenceRule(*rule));
+        }
+        recurrence.setExceptionRules(exrules);
+        item->saveDetail(&recurrence);
+    }
+}
+
+static void toItemEvent(QOrganizerItem *item, const KCalendarCore::Event::Ptr &event)
+{
+    if (event->hasRecurrenceId()) {
+        item->setType(QOrganizerItemType::TypeEventOccurrence);
+        QOrganizerItemParent parent;
+        parent.setParentId(QOrganizerItemId(item->id().managerUri(),
+                                            event->uid().toUtf8()));
+        parent.setOriginalDate(event->recurrenceId().date());
+        item->saveDetail(&parent);
+    } else {
+        item->setType(QOrganizerItemType::TypeEvent);
+    }
+    QOrganizerEventTime time;
+    time.setStartDateTime(event->dtStart());
+    time.setEndDateTime(event->dtEnd());
+    time.setAllDay(event->allDay());
+    item->saveDetail(&time);
+    if (event->dirtyFields().contains(KCalendarCore::Incidence::FieldOrganizer)) {
+        QOrganizerEventRsvp rsvp;
+        rsvp.setOrganizerName(event->organizer().name());
+        rsvp.setOrganizerEmail(event->organizer().email());
+        item->saveDetail(&rsvp);
+    }
+    for (const KCalendarCore::Attendee &att : event->attendees()) {
+        QOrganizerEventAttendee attendee;
+        switch (att.status()) {
+        case KCalendarCore::Attendee::Accepted:
+            attendee.setParticipationStatus(QOrganizerEventAttendee::StatusAccepted);
+            break;
+        case KCalendarCore::Attendee::Declined:
+            attendee.setParticipationStatus(QOrganizerEventAttendee::StatusDeclined);
+            break;
+        case KCalendarCore::Attendee::Tentative:
+            attendee.setParticipationStatus(QOrganizerEventAttendee::StatusTentative);
+            break;
+        case KCalendarCore::Attendee::Delegated:
+            attendee.setParticipationStatus(QOrganizerEventAttendee::StatusDelegated);
+            break;
+        case KCalendarCore::Attendee::InProcess:
+            attendee.setParticipationStatus(QOrganizerEventAttendee::StatusInProcess);
+            break;
+        case KCalendarCore::Attendee::Completed:
+            attendee.setParticipationStatus(QOrganizerEventAttendee::StatusCompleted);
+            break;
+        default:
+            break;
+        }
+        switch (att.role()) {
+        case KCalendarCore::Attendee::ReqParticipant:
+            attendee.setParticipationRole(QOrganizerEventAttendee::RoleRequiredParticipant);
+            break;
+        case KCalendarCore::Attendee::OptParticipant:
+            attendee.setParticipationRole(QOrganizerEventAttendee::RoleOptionalParticipant);
+            break;
+        case KCalendarCore::Attendee::NonParticipant:
+            attendee.setParticipationRole(QOrganizerEventAttendee::RoleNonParticipant);
+            break;
+        case KCalendarCore::Attendee::Chair:
+            attendee.setParticipationRole(QOrganizerEventAttendee::RoleChairperson);
+            break;
+        default:
+            break;
+        }
+        attendee.setAttendeeId(att.uid());
+        attendee.setName(att.name());
+        attendee.setEmailAddress(att.email());
+        item->saveDetail(&attendee);
+    }
+    toItemIncidence(item, event);
+}
+
+static void toItemTodo(QOrganizerItem *item, const KCalendarCore::Todo::Ptr &todo)
+{
+    if (todo->hasRecurrenceId()) {
+        item->setType(QOrganizerItemType::TypeTodoOccurrence);
+        QOrganizerItemParent parent;
+        parent.setParentId(QOrganizerItemId(item->id().managerUri(),
+                                            todo->uid().toUtf8()));
+        parent.setOriginalDate(todo->recurrenceId().date());
+        item->saveDetail(&parent);
+    } else {
+        item->setType(QOrganizerItemType::TypeTodo);
+    }
+    QOrganizerTodoTime time;
+    time.setStartDateTime(todo->dtStart());
+    time.setDueDateTime(todo->dtDue());
+    time.setAllDay(todo->allDay());
+    item->saveDetail(&time);
+    if (todo->dirtyFields().contains(KCalendarCore::Incidence::FieldPercentComplete)
+        || todo->dirtyFields().contains(KCalendarCore::Incidence::FieldCompleted)) {
+        QOrganizerTodoProgress progress;
+        progress.setFinishedDateTime(todo->completed());
+        progress.setPercentageComplete(todo->percentComplete());
+        item->saveDetail(&progress);
+    }
+    toItemIncidence(item, todo);
+}
+
+static void toItemJournal(QOrganizerItem *item, const KCalendarCore::Journal::Ptr &journal)
+{
+    item->setType(QOrganizerItemType::TypeJournal);
+    QOrganizerJournalTime time;
+    time.setEntryDateTime(journal->dtStart());
+    item->saveDetail(&time);
+}
+
 ItemCalendars::ItemCalendars(const QTimeZone &timezone)
     : mKCal::ExtendedCalendar(timezone)
 {
+}
+
+QOrganizerItem ItemCalendars::item(const QOrganizerItemId &id) const
+{
+    QOrganizerItem item;
+
+    KCalendarCore::Incidence::Ptr incidence = instance(id.localId());
+    if (incidence) {
+        item.setId(id);
+        switch (incidence->type()) {
+        case KCalendarCore::Incidence::TypeEvent:
+            toItemEvent(&item, incidence.staticCast<KCalendarCore::Event>());
+            break;
+        case KCalendarCore::Incidence::TypeTodo:
+            toItemTodo(&item, incidence.staticCast<KCalendarCore::Todo>());
+            break;
+        case KCalendarCore::Incidence::TypeJournal:
+            toItemJournal(&item, incidence.staticCast<KCalendarCore::Journal>());
+            break;
+        default:
+            break;
+        }
+    }
+
+    return item;
 }
 
 QByteArray ItemCalendars::addItem(const QOrganizerItem &item)

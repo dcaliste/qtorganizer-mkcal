@@ -71,6 +71,12 @@ public:
     QList<QtOrganizer::QOrganizerItemDetail::DetailType> supportedItemDetails(QtOrganizer::QOrganizerItemType::ItemType itemType) const override;
     QList<QtOrganizer::QOrganizerItemType::ItemType> supportedItemTypes() const override;
 
+    QList<QtOrganizer::QOrganizerItem>
+        items(const QList<QtOrganizer::QOrganizerItemId> &itemIds,
+              const QtOrganizer::QOrganizerItemFetchHint &fetchHint,
+              QMap<int, QtOrganizer::QOrganizerManager::Error> *errorMap,
+              QtOrganizer::QOrganizerManager::Error *error) override;
+    
     bool saveItems(QList<QtOrganizer::QOrganizerItem> *items,
                    const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask,
                    QMap<int, QtOrganizer::QOrganizerManager::Error> *errorMap,

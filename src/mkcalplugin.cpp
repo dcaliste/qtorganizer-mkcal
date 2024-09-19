@@ -236,6 +236,37 @@ QList<QOrganizerItemFilter::FilterType> mKCalEngine::supportedFilters() const
         << QOrganizerItemFilter::CollectionFilter;
 }
 
+QList<QOrganizerItem> mKCalEngine::items(const QList<QOrganizerItemId> &itemIds,
+                                         const QOrganizerItemFetchHint &fetchHint,
+                                         QMap<int, QOrganizerManager::Error> *errorMap,
+                                         QOrganizerManager::Error *error)
+{
+    Q_UNUSED(fetchHint);
+
+    QList<QOrganizerItem> items;
+    if (isOpened()) {
+        int index = 0;
+        for (const QOrganizerItemId &id : itemIds) {
+            if (id.managerUri() == managerUri()
+                && mStorage->loadIncidenceInstance(id.localId())) {
+                const QOrganizerItem item = mCalendars->item(id);
+                if (!item.isEmpty()) {
+                    items.append(item);
+                } else {
+                    *error = QOrganizerManager::PermissionsError;
+                }
+            } else {
+                *error = QOrganizerManager::DoesNotExistError;
+            }
+            index += 1;
+        }        
+    } else {
+        *error = QOrganizerManager::PermissionsError;
+    }
+
+    return items;
+}
+
 bool mKCalEngine::saveItems(QList<QOrganizerItem> *items,
                             const QList<QOrganizerItemDetail::DetailType> &detailMask,
                             QMap<int, QOrganizerManager::Error> *errorMap,
