@@ -115,7 +115,7 @@ void mKCalEngine::storageUpdated(mKCal::ExtendedStorage *storage,
     ids.clear();
     ops.clear();
     for (const KCalendarCore::Incidence::Ptr &incidence : added) {
-        const QOrganizerItemId id(managerUri(), incidence->uid().toUtf8());
+        const QOrganizerItemId id = itemId(incidence->uid().toUtf8());
         ids << id;
         ops << QPair<QOrganizerItemId, QOrganizerManager::Operation>(id, QOrganizerManager::Add);
     }
@@ -129,7 +129,7 @@ void mKCalEngine::storageUpdated(mKCal::ExtendedStorage *storage,
     ids.clear();
     ops.clear();
     for (const KCalendarCore::Incidence::Ptr &incidence : modified) {
-        const QOrganizerItemId id(managerUri(), incidence->uid().toUtf8());
+        const QOrganizerItemId id = itemId(incidence->uid().toUtf8());
         ids << id;
         ops << QPair<QOrganizerItemId, QOrganizerManager::Operation>(id, QOrganizerManager::Change);
     }
@@ -144,7 +144,7 @@ void mKCalEngine::storageUpdated(mKCal::ExtendedStorage *storage,
     ops.clear();
     QMap<QString, KCalendarCore::Incidence::List> purgeList;
     for (const KCalendarCore::Incidence::Ptr &incidence : deleted) {
-        const QOrganizerItemId id(managerUri(), incidence->uid().toUtf8());
+        const QOrganizerItemId id = itemId(incidence->uid().toUtf8());
         ids << id;
         ops << QPair<QOrganizerItemId, QOrganizerManager::Operation>(id, QOrganizerManager::Remove);
         // if the incidence was stored in a local (non-synced) notebook, purge it.
@@ -250,7 +250,7 @@ bool mKCalEngine::saveItems(QList<QOrganizerItem> *items,
                 if (localId.isEmpty()) {
                     errorMap->insert(index, QOrganizerManager::InvalidItemTypeError);
                 } else {
-                    item.setId(QOrganizerItemId(managerUri(), localId));
+                    item.setId(itemId(localId));
                 }
             } else if (item.id().managerUri() == managerUri()) {
                 if (!mCalendars->updateItem(item, detailMask)) {
@@ -343,7 +343,7 @@ QOrganizerCollectionId mKCalEngine::defaultCollectionId() const
     }
 
     return (isOpened() && nb)
-        ? QOrganizerCollectionId(managerUri(), nb->uid().toUtf8())
+        ? collectionId(nb->uid().toUtf8())
         : QOrganizerCollectionId();
 }
 
@@ -392,8 +392,7 @@ bool mKCalEngine::saveCollection(QOrganizerCollection *collection,
             if (!mStorage->addNotebook(nb)) {
                 *error = QOrganizerManager::PermissionsError;
             } else {
-                collection->setId(QOrganizerCollectionId(managerUri(),
-                                                                      nb->uid().toUtf8()));
+                collection->setId(collectionId(nb->uid().toUtf8()));
                 emit collectionsAdded(QList<QOrganizerCollectionId>() << collection->id());
                 emit collectionsModified(QList<QPair<QOrganizerCollectionId, QOrganizerManager::Operation> >() << QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(collection->id(), QOrganizerManager::Add));
             }
