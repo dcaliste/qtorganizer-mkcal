@@ -452,7 +452,7 @@ QByteArray ItemCalendars::addItem(const QOrganizerItem &item)
             valid = addIncidence(newIncidence, nbuid);
         }
         if (valid) {
-            return newIncidence->uid().toUtf8();
+            return newIncidence->instanceIdentifier().toUtf8();
         }
     }
     return QByteArray();
@@ -461,49 +461,28 @@ QByteArray ItemCalendars::addItem(const QOrganizerItem &item)
 bool ItemCalendars::updateItem(const QOrganizerItem &item,
                                const QList<QOrganizerItemDetail::DetailType> &detailMask)
 {
-    QOrganizerItemParent detail = item.detail(QOrganizerItemDetail::TypeParent);
-    const QString uid = QString::fromUtf8(detail.isEmpty()
-                                          ? item.id().localId()
-                                          : detail.parentId().localId());
-    QDateTime recurId;
     KCalendarCore::Incidence::Ptr incidence;
     switch (item.type()) {
     case QOrganizerItemType::TypeEventOccurrence:
-        if (!detail.isEmpty()) {
-            KCalendarCore::Incidence::Ptr parent = event(uid);
-            if (parent) {
-                recurId = parent->dtStart();
-                recurId.setDate(detail.originalDate());
-            } else {
-                return false;
-            }
-        }
-        // Fallthrough
     case QOrganizerItemType::TypeEvent:
-        incidence = event(uid, recurId);
-        if (incidence) {
+        incidence = instance(item.id().localId());
+        if (incidence && incidence->type() == KCalendarCore::Incidence::TypeEvent) {
             updateEvent(incidence.staticCast<KCalendarCore::Event>(), item, detailMask);
+        } else {
+            incidence.clear();
         }
         break;
     case QOrganizerItemType::TypeTodoOccurrence:
-        if (!detail.isEmpty()) {
-            KCalendarCore::Incidence::Ptr parent = todo(uid);
-            if (parent) {
-                recurId = parent->dtStart();
-                recurId.setDate(detail.originalDate());
-            } else {
-                return false;
-            }
-        }
-        // Fallthrough
     case QOrganizerItemType::TypeTodo:
-        incidence = todo(uid, recurId);
-        if (incidence) {
+        incidence = instance(item.id().localId());
+        if (incidence && incidence->type() == KCalendarCore::Incidence::TypeTodo) {
             updateTodo(incidence.staticCast<KCalendarCore::Todo>(), item, detailMask);
+        } else {
+            incidence.clear();
         }
         break;
     case QOrganizerItemType::TypeJournal:
-        incidence = journal(uid);
+        incidence = journal(item.id().localId());
         if (incidence) {
             updateJournal(incidence.staticCast<KCalendarCore::Journal>(), item, detailMask);
         }
@@ -516,57 +495,26 @@ bool ItemCalendars::updateItem(const QOrganizerItem &item,
 
 bool ItemCalendars::removeItem(const QtOrganizer::QOrganizerItem &item)
 {
-    QOrganizerItemParent detail = item.detail(QOrganizerItemDetail::TypeParent);
-    const QString uid = QString::fromUtf8(detail.isEmpty()
-                                          ? item.id().localId()
-                                          : detail.parentId().localId());
-    QDateTime recurId;
-    KCalendarCore::Incidence::Ptr parent;
-    KCalendarCore::Incidence::Ptr incidence;
-    switch (item.type()) {
-    case QOrganizerItemType::TypeEventOccurrence:
-        if (!detail.isEmpty()) {
-            parent = event(uid);
-            if (parent) {
-                recurId = parent->dtStart();
+    if ((item.type() == QOrganizerItemType::TypeEventOccurrence
+         || item.type() == QOrganizerItemType::TypeTodoOccurrence)
+        && item.id().isNull()) {
+        QOrganizerItemParent detail = item.detail(QOrganizerItemDetail::TypeParent);
+        KCalendarCore::Incidence::Ptr parent = incidence(detail.parentId().localId());
+        if (parent) {
+            if (parent->allDay()) {
+                parent->recurrence()->addExDate(detail.originalDate());
+            } else{
+                QDateTime recurId = parent->dtStart();
                 recurId.setDate(detail.originalDate());
-            } else {
-                return false;
+                parent->recurrence()->addExDateTime(recurId);
             }
-            incidence = event(uid, recurId);
         }
-        break;
-    case QOrganizerItemType::TypeEvent:
-        incidence = event(uid);
-        break;
-    case QOrganizerItemType::TypeTodoOccurrence:
-        if (!detail.isEmpty()) {
-            parent = todo(uid);
-            if (parent) {
-                recurId = parent->dtStart();
-                recurId.setDate(detail.originalDate());
-            } else {
-                return false;
-            }
-            incidence = todo(uid, recurId);
+        return !parent.isNull();
+    } else {
+        KCalendarCore::Incidence::Ptr doomed = instance(item.id().localId());
+        if (doomed && !deleteIncidence(doomed)) {
+            doomed.clear();
         }
-        break;
-    case QOrganizerItemType::TypeTodo:
-        incidence = todo(uid, recurId);
-        break;
-    case QOrganizerItemType::TypeJournal:
-        incidence = journal(uid);
-        break;
-    default:
-        break;
+        return !doomed.isNull();
     }
-    if (parent && !incidence) {
-        if (parent->allDay()) {
-            parent->recurrence()->addExDate(detail.originalDate());
-        } else{
-            parent->recurrence()->addExDateTime(recurId);
-        }
-        return true;
-    }
-    return incidence && deleteIncidence(incidence);
 }

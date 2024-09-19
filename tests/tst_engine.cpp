@@ -110,9 +110,9 @@ public:
     {
         mStorage->unregisterObserver(this);
     }
-    KCalendarCore::Incidence::Ptr incidence(const QByteArray &uid, const QDateTime &recurId = QDateTime())
+    KCalendarCore::Incidence::Ptr incidence(const QOrganizerItemId &id)
     {
-        return mCalendar->incidence(QString::fromUtf8(uid), recurId);
+        return mCalendar->instance(QString::fromUtf8(id.localId()));
     }
 
 signals:
@@ -315,7 +315,7 @@ void tst_engine::testSimpleEventIO()
 
     QTRY_COMPARE(dataChanged.count(), 1);
     dataChanged.clear();
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->type(), KCalendarCore::IncidenceBase::TypeEvent);
     QCOMPARE(incidence->summary(), item.displayLabel());
@@ -328,7 +328,7 @@ void tst_engine::testSimpleEventIO()
     QVERIFY(mManager->removeItem(item.id()));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    QVERIFY(!observer.incidence(item.id().localId()));
+    QVERIFY(!observer.incidence(item.id()));
 }
 
 Q_DECLARE_METATYPE(QOrganizerItemClassification::AccessClassification)
@@ -363,7 +363,7 @@ void tst_engine::testItemClassification()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->secrecy(), secrecy);
 }
@@ -385,7 +385,7 @@ void tst_engine::testItemLocation()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->location(), detail.label());
     QCOMPARE(incidence->geoLatitude(), float(detail.latitude()));
@@ -427,7 +427,7 @@ void tst_engine::testItemPriority()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->priority(), value);
 }
@@ -450,7 +450,7 @@ void tst_engine::testItemTimestamp()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->created(), detail.created());
     QCOMPARE(incidence->lastModified(), detail.lastModified());
@@ -471,7 +471,7 @@ void tst_engine::testItemVersion()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->revision(), detail.version());
 }
@@ -493,7 +493,7 @@ void tst_engine::testItemAudibleReminder()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->alarms().count(), 1);
     KCalendarCore::Alarm::Ptr alarm = incidence->alarms().first();
@@ -524,7 +524,7 @@ void tst_engine::testItemEmailReminder()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->alarms().count(), 1);
     KCalendarCore::Alarm::Ptr alarm = incidence->alarms().first();
@@ -552,7 +552,7 @@ void tst_engine::testItemVisualReminder()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->alarms().count(), 1);
     KCalendarCore::Alarm::Ptr alarm = incidence->alarms().first();
@@ -582,7 +582,7 @@ void tst_engine::testItemAttendees()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->attendees().count(), 2);
     KCalendarCore::Attendee::List attendees = incidence->attendees();
@@ -640,7 +640,7 @@ void tst_engine::testItemAttendeeStatus()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->attendees().count(), 1);
     const KCalendarCore::Attendee att(incidence->attendees().first());
@@ -689,7 +689,7 @@ void tst_engine::testItemAttendeeRole()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->attendees().count(), 1);
     const KCalendarCore::Attendee att(incidence->attendees().first());
@@ -730,7 +730,7 @@ void tst_engine::testRecurringEventIO()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 1);
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QVERIFY(incidence->recurs());
     KCalendarCore::Recurrence *recurrence = incidence->recurrence();
@@ -772,7 +772,7 @@ void tst_engine::testRecurringEventIO()
     QVERIFY(mManager->removeItem(&occurrence));
 
     QTRY_COMPARE(dataChanged.count(), 2);
-    incidence = observer.incidence(item.id().localId());
+    incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QDateTime dt = time.startDateTime();
     dt.setDate(detail.originalDate());
@@ -818,17 +818,14 @@ void tst_engine::testExceptionIO()
     QVERIFY(mManager->saveItem(&item));
 
     QTRY_COMPARE(dataChanged.count(), 2);
-    QDateTime recurId = time.startDateTime();
-    recurId.setDate(detail.originalDate());
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId(),
-                                                                 recurId);
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
 
     QVERIFY(mManager->removeItem(parent.id()));
 
     QTRY_COMPARE(dataChanged.count(), 3);
-    QVERIFY(!observer.incidence(parent.id().localId()));
-    QVERIFY(!observer.incidence(parent.id().localId(), recurId));
+    QVERIFY(!observer.incidence(parent.id()));
+    QVERIFY(!observer.incidence(item.id()));
 }
 
 void tst_engine::testSimpleTodoIO()
@@ -854,7 +851,7 @@ void tst_engine::testSimpleTodoIO()
 
     QTRY_COMPARE(dataChanged.count(), 1);
     dataChanged.clear();
-    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id().localId());
+    KCalendarCore::Incidence::Ptr incidence = observer.incidence(item.id());
     QVERIFY(incidence);
     QCOMPARE(incidence->type(), KCalendarCore::IncidenceBase::TypeTodo);
     QCOMPARE(incidence->dtStart(), time.startDateTime());

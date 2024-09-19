@@ -281,7 +281,7 @@ bool mKCalEngine::removeItems(const QList<QOrganizerItemId> &itemIds,
         int index = 0;
         for (const QOrganizerItemId &id : itemIds) {
             if (id.managerUri() == managerUri() && !id.localId().isEmpty()) {
-                KCalendarCore::Incidence::Ptr doomed = mCalendars->incidence(id.localId());
+                KCalendarCore::Incidence::Ptr doomed = mCalendars->instance(id.localId());
                 if (doomed && !mCalendars->deleteIncidence(doomed)) {
                     errorMap->insert(index, QOrganizerManager::PermissionsError);
                 }
