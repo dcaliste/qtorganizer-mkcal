@@ -301,6 +301,36 @@ bool mKCalEngine::removeItems(const QList<QOrganizerItemId> &itemIds,
         && errorMap->isEmpty();
 }
 
+bool mKCalEngine::removeItems(const QList<QOrganizerItem> *items,
+                              QMap<int, QOrganizerManager::Error> *errorMap,
+                              QOrganizerManager::Error *error)
+{
+    *error = QOrganizerManager::NoError;
+    if (isOpened()) {
+        int index = 0;
+        for (const QOrganizerItem &item : *items) {
+            if (item.id().isNull()
+                || (item.id().managerUri() == managerUri()
+                    && !item.id().localId().isEmpty())) {
+                if (!mCalendars->removeItem(item)) {
+                    errorMap->insert(index, QOrganizerManager::PermissionsError);
+                }
+            } else {
+                *error = QOrganizerManager::DoesNotExistError;
+            }
+            index += 1;
+        }
+        if (!mStorage->save()) {
+            *error = QOrganizerManager::PermissionsError;
+        }
+    } else {
+        *error = QOrganizerManager::PermissionsError;
+    }
+
+    return (*error == QOrganizerManager::NoError)
+        && errorMap->isEmpty();
+}
+
 QOrganizerCollectionId mKCalEngine::defaultCollectionId() const
 {
     mKCal::Notebook::Ptr nb = mStorage->defaultNotebook();

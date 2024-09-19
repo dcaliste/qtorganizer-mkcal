@@ -762,6 +762,21 @@ void tst_engine::testRecurringEventIO()
             }
         }
     }
+
+    QOrganizerItem occurrence;
+    occurrence.setType(QOrganizerItemType::TypeEventOccurrence);
+    QOrganizerItemParent detail;
+    detail.setParentId(item.id());
+    detail.setOriginalDate(QDate(2024, 11, 17));
+    occurrence.saveDetail(&detail);
+    QVERIFY(mManager->removeItem(&occurrence));
+
+    QTRY_COMPARE(dataChanged.count(), 2);
+    incidence = observer.incidence(item.id().localId());
+    QVERIFY(incidence);
+    QDateTime dt = time.startDateTime();
+    dt.setDate(detail.originalDate());
+    QVERIFY(incidence->recurrence()->exDateTimes().contains(dt));
 }
 
 void tst_engine::testExceptionIO()

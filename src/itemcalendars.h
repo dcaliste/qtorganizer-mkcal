@@ -44,6 +44,7 @@ public:
     QByteArray addItem(const QtOrganizer::QOrganizerItem &item);
     bool updateItem(const QtOrganizer::QOrganizerItem &item,
                     const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask = QList<QtOrganizer::QOrganizerItemDetail::DetailType>());
+    bool removeItem(const QtOrganizer::QOrganizerItem &item);
 };
 
 #endif

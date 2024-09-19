@@ -471,8 +471,12 @@ bool ItemCalendars::updateItem(const QOrganizerItem &item,
     case QOrganizerItemType::TypeEventOccurrence:
         if (!detail.isEmpty()) {
             KCalendarCore::Incidence::Ptr parent = event(uid);
-            recurId = parent->dtStart();
-            recurId.setDate(detail.originalDate());
+            if (parent) {
+                recurId = parent->dtStart();
+                recurId.setDate(detail.originalDate());
+            } else {
+                return false;
+            }
         }
         // Fallthrough
     case QOrganizerItemType::TypeEvent:
@@ -484,8 +488,12 @@ bool ItemCalendars::updateItem(const QOrganizerItem &item,
     case QOrganizerItemType::TypeTodoOccurrence:
         if (!detail.isEmpty()) {
             KCalendarCore::Incidence::Ptr parent = todo(uid);
-            recurId = parent->dtStart();
-            recurId.setDate(detail.originalDate());
+            if (parent) {
+                recurId = parent->dtStart();
+                recurId.setDate(detail.originalDate());
+            } else {
+                return false;
+            }
         }
         // Fallthrough
     case QOrganizerItemType::TypeTodo:
@@ -504,4 +512,61 @@ bool ItemCalendars::updateItem(const QOrganizerItem &item,
         break;
     }
     return !incidence.isNull();
+}
+
+bool ItemCalendars::removeItem(const QtOrganizer::QOrganizerItem &item)
+{
+    QOrganizerItemParent detail = item.detail(QOrganizerItemDetail::TypeParent);
+    const QString uid = QString::fromUtf8(detail.isEmpty()
+                                          ? item.id().localId()
+                                          : detail.parentId().localId());
+    QDateTime recurId;
+    KCalendarCore::Incidence::Ptr parent;
+    KCalendarCore::Incidence::Ptr incidence;
+    switch (item.type()) {
+    case QOrganizerItemType::TypeEventOccurrence:
+        if (!detail.isEmpty()) {
+            parent = event(uid);
+            if (parent) {
+                recurId = parent->dtStart();
+                recurId.setDate(detail.originalDate());
+            } else {
+                return false;
+            }
+            incidence = event(uid, recurId);
+        }
+        break;
+    case QOrganizerItemType::TypeEvent:
+        incidence = event(uid);
+        break;
+    case QOrganizerItemType::TypeTodoOccurrence:
+        if (!detail.isEmpty()) {
+            parent = todo(uid);
+            if (parent) {
+                recurId = parent->dtStart();
+                recurId.setDate(detail.originalDate());
+            } else {
+                return false;
+            }
+            incidence = todo(uid, recurId);
+        }
+        break;
+    case QOrganizerItemType::TypeTodo:
+        incidence = todo(uid, recurId);
+        break;
+    case QOrganizerItemType::TypeJournal:
+        incidence = journal(uid);
+        break;
+    default:
+        break;
+    }
+    if (parent && !incidence) {
+        if (parent->allDay()) {
+            parent->recurrence()->addExDate(detail.originalDate());
+        } else{
+            parent->recurrence()->addExDateTime(recurId);
+        }
+        return true;
+    }
+    return incidence && deleteIncidence(incidence);
 }
