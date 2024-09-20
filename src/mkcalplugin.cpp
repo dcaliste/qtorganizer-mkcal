@@ -318,6 +318,52 @@ QList<QOrganizerItem> mKCalEngine::items(const QOrganizerItemFilter &filter,
     return items;
 }
 
+QList<QOrganizerItemId> mKCalEngine::itemIds(const QOrganizerItemFilter &filter,
+                                             const QDateTime &startDateTime,
+                                             const QDateTime &endDateTime,
+                                             const QList<QOrganizerItemSortOrder> &sortOrders,
+                                             QOrganizerManager::Error *error)
+{
+    QList<QOrganizerItemId> ids;
+    if (isOpened() && mStorage->load(startDateTime.date(), endDateTime.date().addDays(1))) {
+        QList<QOrganizerItem> items = mCalendars->items(managerUri(), filter,
+                                                        startDateTime, endDateTime,
+                                                        0, QList<QOrganizerItemDetail::DetailType>());
+        std::sort(items.begin(), items.end(),
+                  [sortOrders] (const QOrganizerItem &item1, const QOrganizerItem &item2) {
+                      int cmp = compareItem(item1, item2, sortOrders);
+                      if (cmp == 0) {
+                          return itemStartDateTime(item1) < itemStartDateTime(item2);
+                      } else {
+                          return (cmp < 0);
+                      }
+                  });
+        QSet<QString> localIds;
+        for (const QOrganizerItem &item : items) {
+            if (!item.id().isNull()) {
+                ids.append(item.id());
+                localIds.insert(item.id().localId());
+            } else if (item.type() == QOrganizerItemType::TypeEventOccurrence) {
+                const QOrganizerEventOccurrence occurrence(item);
+                if (!localIds.contains(occurrence.parentId().localId())) {
+                    ids.append(occurrence.parentId());
+                    localIds.insert(occurrence.parentId().localId());
+                }
+            } else if (item.type() == QOrganizerItemType::TypeTodoOccurrence) {
+                const QOrganizerTodoOccurrence occurrence(item);
+                if (!localIds.contains(occurrence.parentId().localId())) {
+                    ids.append(occurrence.parentId());
+                    localIds.insert(occurrence.parentId().localId());
+                }
+            }
+        }
+    } else {
+        *error = QOrganizerManager::PermissionsError;
+    }
+
+    return ids;
+}
+
 bool mKCalEngine::saveItems(QList<QOrganizerItem> *items,
                             const QList<QOrganizerItemDetail::DetailType> &detailMask,
                             QMap<int, QOrganizerManager::Error> *errorMap,

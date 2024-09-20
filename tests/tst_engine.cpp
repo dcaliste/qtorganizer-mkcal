@@ -1152,6 +1152,18 @@ void tst_engine::testSimpleRangeRead()
     items = mManager->items(QDateTime(), QDateTime(), filter);
     QCOMPARE(mManager->error(), QOrganizerManager::NoError);
     QCOMPARE(items.count(), 2);
+
+    QList<QOrganizerItemId> ids
+        = mManager->itemIds(QDateTime(QDate(2024, 9, 21),
+                                      QTime(), QTimeZone("Europe/Paris")),
+                            QDateTime(QDate(2024, 9, 24),
+                                      QTime(), QTimeZone("Europe/Paris")),
+                            filter);
+    QCOMPARE(mManager->error(), QOrganizerManager::NoError);
+    QCOMPARE(ids.count(), 3);
+    QCOMPARE(ids.takeFirst(), event3.id());
+    QCOMPARE(ids.takeFirst(), todo2.id());
+    QCOMPARE(ids.takeFirst(), ex1.id());
 }
 
 #include "tst_engine.moc"
