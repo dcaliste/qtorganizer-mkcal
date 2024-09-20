@@ -76,6 +76,13 @@ public:
               const QtOrganizer::QOrganizerItemFetchHint &fetchHint,
               QMap<int, QtOrganizer::QOrganizerManager::Error> *errorMap,
               QtOrganizer::QOrganizerManager::Error *error) override;
+    QList<QtOrganizer::QOrganizerItem>
+        items(const QtOrganizer::QOrganizerItemFilter &filter,
+              const QDateTime &startDateTime,
+              const QDateTime &endDateTime, int maxCount,
+              const QList<QtOrganizer::QOrganizerItemSortOrder> &sortOrders,
+              const QtOrganizer::QOrganizerItemFetchHint &fetchHint,
+              QtOrganizer::QOrganizerManager::Error *error) override;
     
     bool saveItems(QList<QtOrganizer::QOrganizerItem> *items,
                    const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask,

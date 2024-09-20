@@ -35,6 +35,7 @@
 #include <extendedcalendar.h>
 
 #include <QtOrganizer/QOrganizerItem>
+#include <QtOrganizer/QOrganizerItemFilter>
 #include <QtOrganizer/QOrganizerItemDetail>
 
 class ItemCalendars: public mKCal::ExtendedCalendar
@@ -44,6 +45,12 @@ public:
 
     QtOrganizer::QOrganizerItem item(const QtOrganizer::QOrganizerItemId &id,
                                      const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &details = QList<QtOrganizer::QOrganizerItemDetail::DetailType>()) const;
+    QList<QtOrganizer::QOrganizerItem> items(const QString &managerUri,
+                                             const QtOrganizer::QOrganizerItemFilter &filter,
+                                             const QDateTime &startDateTime,
+                                             const QDateTime &endDateTime,
+                                             int maxCount,
+                                             const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &details) const;
     
     QByteArray addItem(const QtOrganizer::QOrganizerItem &item);
     bool updateItem(const QtOrganizer::QOrganizerItem &item,

@@ -49,9 +49,15 @@
 #include <QtOrganizer/QOrganizerTodoProgress>
 #include <QtOrganizer/QOrganizerJournalTime>
 
+#include <QtOrganizer/QOrganizerItemCollectionFilter>
+#include <QtOrganizer/QOrganizerEventOccurrence>
+#include <QtOrganizer/QOrganizerTodoOccurrence>
+#include <QtOrganizer/QOrganizerManagerEngine>
+
 #include <KCalendarCore/Event>
 #include <KCalendarCore/Todo>
 #include <KCalendarCore/Journal>
+#include <KCalendarCore/OccurrenceIterator>
 
 using namespace QtOrganizer;
 
@@ -599,21 +605,28 @@ static void toItemIncidence(QOrganizerItem *item,
 }
 
 static void toItemEvent(QOrganizerItem *item, const KCalendarCore::Event::Ptr &event,
-                        const QList<QOrganizerItemDetail::DetailType> &details)
+                        const QList<QOrganizerItemDetail::DetailType> &details,
+                        const QDateTime &occurrenceStart = QDateTime(),
+                        const QDateTime &occurrenceEnd = QDateTime(),
+                        const QDateTime &recurrenceId = QDateTime())
 {
-    if (event->hasRecurrenceId()) {
+    if (event->hasRecurrenceId() || recurrenceId.isValid()) {
         item->setType(QOrganizerItemType::TypeEventOccurrence);
         QOrganizerItemParent parent;
-        parent.setParentId(QOrganizerItemId(item->id().managerUri(),
+        parent.setParentId(QOrganizerItemId(item->collectionId().managerUri(),
                                             event->uid().toUtf8()));
-        parent.setOriginalDate(event->recurrenceId().date());
+        if (event->hasRecurrenceId()) {
+            parent.setOriginalDate(event->recurrenceId().date());
+        } else {
+            parent.setOriginalDate(recurrenceId.date());
+        }
         item->saveDetail(&parent);
     } else {
         item->setType(QOrganizerItemType::TypeEvent);
     }
     QOrganizerEventTime time;
-    time.setStartDateTime(event->dtStart());
-    time.setEndDateTime(event->dtEnd());
+    time.setStartDateTime(occurrenceStart.isValid() ? occurrenceStart : event->dtStart());
+    time.setEndDateTime(occurrenceEnd.isValid() ? occurrenceEnd : event->dtEnd());
     time.setAllDay(event->allDay());
     item->saveDetail(&time);
     if (event->dirtyFields().contains(KCalendarCore::Incidence::FieldOrganizer)
@@ -674,21 +687,28 @@ static void toItemEvent(QOrganizerItem *item, const KCalendarCore::Event::Ptr &e
 }
 
 static void toItemTodo(QOrganizerItem *item, const KCalendarCore::Todo::Ptr &todo,
-                       const QList<QOrganizerItemDetail::DetailType> &details)
+                       const QList<QOrganizerItemDetail::DetailType> &details,
+                       const QDateTime &occurrenceStart = QDateTime(),
+                       const QDateTime &occurrenceEnd = QDateTime(),
+                       const QDateTime &recurrenceId = QDateTime())
 {
-    if (todo->hasRecurrenceId()) {
+    if (todo->hasRecurrenceId() || recurrenceId.isValid()) {
         item->setType(QOrganizerItemType::TypeTodoOccurrence);
         QOrganizerItemParent parent;
-        parent.setParentId(QOrganizerItemId(item->id().managerUri(),
+        parent.setParentId(QOrganizerItemId(item->collectionId().managerUri(),
                                             todo->uid().toUtf8()));
-        parent.setOriginalDate(todo->recurrenceId().date());
+        if (todo->hasRecurrenceId()) {
+            parent.setOriginalDate(todo->recurrenceId().date());
+        } else {
+            parent.setOriginalDate(recurrenceId.date());
+        }
         item->saveDetail(&parent);
     } else {
         item->setType(QOrganizerItemType::TypeTodo);
     }
     QOrganizerTodoTime time;
-    time.setStartDateTime(todo->dtStart());
-    time.setDueDateTime(todo->dtDue());
+    time.setStartDateTime(occurrenceStart.isValid() ? occurrenceStart : todo->dtStart());
+    time.setDueDateTime(occurrenceEnd.isValid() ? occurrenceEnd : todo->dtDue());
     time.setAllDay(todo->allDay());
     item->saveDetail(&time);
     if ((todo->dirtyFields().contains(KCalendarCore::Incidence::FieldPercentComplete)
@@ -745,6 +765,64 @@ QOrganizerItem ItemCalendars::item(const QOrganizerItemId &id,
     }
 
     return item;
+}
+
+QList<QOrganizerItem> ItemCalendars::items(const QString &managerUri,
+                                           const QOrganizerItemFilter &filter,
+                                           const QDateTime &startDateTime,
+                                           const QDateTime &endDateTime,
+                                           int maxCount,
+                                           const QList<QOrganizerItemDetail::DetailType> &details) const
+{
+    QList<QOrganizerItem> items;
+
+    int count = 0;
+    KCalendarCore::OccurrenceIterator it(*this, startDateTime, endDateTime);
+    while (it.hasNext() && (count < maxCount || maxCount < 1)) {
+        it.next();
+        KCalendarCore::Incidence::Ptr incidence = it.incidence();
+        const QByteArray notebookUid = notebook(incidence).toUtf8();
+        if (filter.type() == QOrganizerItemFilter::CollectionFilter) {
+            bool match = false;
+            for (const QOrganizerCollectionId &id : QOrganizerItemCollectionFilter(filter).collectionIds()) {
+                if (id.localId() == notebookUid) {
+                    match = true;
+                    break;
+                }
+            }
+            if (!match) {
+                continue;
+            }
+        }
+        QOrganizerItem item;
+        if (!it.recurrenceId().isValid() || incidence->hasRecurrenceId()) {
+            // A "real" occurrence, either a non-recurring incidence or an exception.
+            item.setId(QOrganizerItemId(managerUri,
+                                        incidence->instanceIdentifier().toUtf8()));
+        }
+        item.setCollectionId(QOrganizerCollectionId(managerUri, notebookUid));
+        switch (incidence->type()) {
+        case KCalendarCore::Incidence::TypeEvent:
+            toItemEvent(&item, incidence.staticCast<KCalendarCore::Event>(), details,
+                        it.occurrenceStartDate(), it.occurrenceEndDate(), it.recurrenceId());
+            break;
+        case KCalendarCore::Incidence::TypeTodo:
+            toItemTodo(&item, incidence.staticCast<KCalendarCore::Todo>(), details,
+                       it.occurrenceStartDate(), it.occurrenceEndDate(), it.recurrenceId());
+            break;
+        case KCalendarCore::Incidence::TypeJournal:
+            toItemJournal(&item, incidence.staticCast<KCalendarCore::Journal>(), details);
+            break;
+        default:
+            break;
+        }
+        if (QOrganizerManagerEngine::testFilter(filter, item)) {
+            items.append(item);
+            count += 1;
+        }
+    }
+
+    return items;
 }
 
 QByteArray ItemCalendars::addItem(const QOrganizerItem &item)

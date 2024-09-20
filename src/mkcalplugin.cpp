@@ -31,6 +31,14 @@
 
 #include "mkcalplugin.h"
 
+#include <algorithm>
+
+#include <QtOrganizer/QOrganizerEvent>
+#include <QtOrganizer/QOrganizerEventOccurrence>
+#include <QtOrganizer/QOrganizerTodo>
+#include <QtOrganizer/QOrganizerTodoOccurrence>
+#include <QtOrganizer/QOrganizerJournal>
+
 #include "helper.h"
 
 using namespace QtOrganizer;
@@ -258,6 +266,51 @@ QList<QOrganizerItem> mKCalEngine::items(const QList<QOrganizerItemId> &itemIds,
             }
             index += 1;
         }
+    } else {
+        *error = QOrganizerManager::PermissionsError;
+    }
+
+    return items;
+}
+
+static QDateTime itemStartDateTime(const QOrganizerItem &item)
+{
+    switch (item.type()) {
+    case QOrganizerItemType::TypeEvent:
+        return QOrganizerEvent(item).startDateTime();
+    case QOrganizerItemType::TypeEventOccurrence:
+        return QOrganizerEventOccurrence(item).startDateTime();
+    case QOrganizerItemType::TypeTodo:
+        return QOrganizerTodo(item).startDateTime();
+    case QOrganizerItemType::TypeTodoOccurrence:
+        return QOrganizerTodoOccurrence(item).startDateTime();
+    case QOrganizerItemType::TypeJournal:
+        return QOrganizerJournal(item).dateTime();
+    }
+    return QDateTime();
+}
+
+QList<QOrganizerItem> mKCalEngine::items(const QOrganizerItemFilter &filter,
+                                         const QDateTime &startDateTime,
+                                         const QDateTime &endDateTime, int maxCount,
+                                         const QList<QOrganizerItemSortOrder> &sortOrders,
+                                         const QOrganizerItemFetchHint &fetchHint,
+                                         QOrganizerManager::Error *error)
+{
+    QList<QOrganizerItem> items;
+    if (isOpened() && mStorage->load(startDateTime.date(), endDateTime.date().addDays(1))) {
+        items = mCalendars->items(managerUri(), filter,
+                                  startDateTime, endDateTime, maxCount,
+                                  fetchHint.detailTypesHint());
+        std::sort(items.begin(), items.end(),
+                  [sortOrders] (const QOrganizerItem &item1, const QOrganizerItem &item2) {
+                      int cmp = compareItem(item1, item2, sortOrders);
+                      if (cmp == 0) {
+                          return itemStartDateTime(item1) < itemStartDateTime(item2);
+                      } else {
+                          return (cmp < 0);
+                      }
+                  });
     } else {
         *error = QOrganizerManager::PermissionsError;
     }

@@ -52,6 +52,12 @@
 #include <QOrganizerTodoTime>
 #include <QOrganizerTodoProgress>
 
+#include <QOrganizerEvent>
+#include <QOrganizerEventOccurrence>
+#include <QOrganizerTodo>
+
+#include <QOrganizerItemCollectionFilter>
+
 #include <extendedcalendar.h>
 #include <sqlitestorage.h>
 
@@ -90,6 +96,8 @@ private slots:
     void testExceptionIO();
 
     void testSimpleTodoIO();
+
+    void testSimpleRangeRead();
 private:
     QOrganizerManager *mManager = nullptr;
 };
@@ -1042,6 +1050,108 @@ void tst_engine::testSimpleTodoIO()
     QOrganizerTodoProgress p(read.detail(QOrganizerItemDetail::TypeTodoProgress));
     QCOMPARE(p.percentageComplete(), progress.percentageComplete());
     // QCOMPARE(p.finishedDateTime(), progress.finishedDateTime());
+}
+
+void tst_engine::testSimpleRangeRead()
+{
+    QSignalSpy dataChanged(mManager, &QOrganizerManager::dataChanged);
+
+    QOrganizerManager manager(QString::fromLatin1("mkcal"),
+                              mManager->managerParameters());
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+
+    QOrganizerCollection collection;
+    collection.setMetaData(QOrganizerCollection::KeyName,
+                           QStringLiteral("Notebook for range tests"));
+    QVERIFY(manager.saveCollection(&collection));
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+    QVERIFY(!collection.id().isNull());
+
+    QOrganizerEvent event1;
+    event1.setCollectionId(collection.id());
+    event1.setDisplayLabel(QStringLiteral("Test event1"));
+    event1.setStartDateTime(QDateTime(QDate(2024, 9, 20),
+                                      QTime(10, 20), QTimeZone("Europe/Paris")));
+    event1.setEndDateTime(QDateTime(QDate(2024, 9, 20),
+                                    QTime(10, 30), QTimeZone("Europe/Paris")));
+    QOrganizerTodo todo2;
+    todo2.setCollectionId(collection.id());
+    todo2.setDisplayLabel(QStringLiteral("Test todo2"));
+    todo2.setStartDateTime(QDateTime(QDate(2024, 9, 22),
+                                     QTime(10, 20), QTimeZone("Europe/Paris")));
+    todo2.setDueDateTime(QDateTime(QDate(2024, 9, 22),
+                                   QTime(10, 30), QTimeZone("Europe/Paris")));
+    QOrganizerEvent event3;
+    event3.setCollectionId(collection.id());
+    event3.setDisplayLabel(QStringLiteral("Test event3"));
+    event3.setStartDateTime(QDateTime(QDate(2024, 9, 21),
+                                      QTime(8, 0), QTimeZone("Europe/Paris")));
+    event3.setEndDateTime(QDateTime(QDate(2024, 9, 21),
+                                    QTime(10, 0), QTimeZone("Europe/Paris")));
+    QOrganizerItemRecurrence recur;
+    QOrganizerRecurrenceRule rule1;
+    rule1.setFrequency(QOrganizerRecurrenceRule::Daily);
+    rule1.setLimit(QDate(2024, 9, 24));
+    rule1.setInterval(1);
+    recur.setRecurrenceRules(QSet<QOrganizerRecurrenceRule>() << rule1);
+    event3.saveDetail(&recur);
+
+    QList<QOrganizerItem> items;
+    items << event1 << todo2 << event3;
+    QVERIFY(manager.saveItems(&items));
+    event1.setId(items.takeFirst().id());
+    todo2.setId(items.takeFirst().id());
+    event3.setId(items.takeFirst().id());
+    QVERIFY(!event1.id().isNull());
+    QVERIFY(!todo2.id().isNull());
+    QVERIFY(!event3.id().isNull());
+    QTRY_COMPARE(dataChanged.count(), 1);
+    dataChanged.clear();
+
+    QOrganizerEventOccurrence ex1;
+    ex1.setCollectionId(collection.id());
+    ex1.setDisplayLabel(QStringLiteral("Test exception1"));
+    ex1.setStartDateTime(QDateTime(QDate(2024, 9, 23),
+                                   QTime(16, 30), QTimeZone("Europe/Paris")));
+    ex1.setEndDateTime(ex1.startDateTime().addSecs(300));
+    ex1.setParentId(event3.id());
+    ex1.setOriginalDate(QDate(2024, 9, 23));
+    QVERIFY(manager.saveItem(&ex1));
+    QTRY_COMPARE(dataChanged.count(), 1);
+    dataChanged.clear();
+
+    QOrganizerItemCollectionFilter filter;
+    filter.setCollectionId(collection.id());
+    items = mManager->items(QDateTime(QDate(2024, 9, 21),
+                                      QTime(), QTimeZone("Europe/Paris")),
+                            QDateTime(QDate(2024, 9, 24),
+                                      QTime(), QTimeZone("Europe/Paris")),
+                            filter);
+    QCOMPARE(mManager->error(), QOrganizerManager::NoError);
+    QCOMPARE(items.count(), 4);
+    QOrganizerEventOccurrence read1 = QOrganizerEventOccurrence(items.takeFirst());
+    QVERIFY(read1.id().isNull());
+    QCOMPARE(read1.parentId(), event3.id());
+    QCOMPARE(read1.originalDate(), event3.startDateTime().date());
+    QCOMPARE(read1.startDateTime(), event3.startDateTime());
+    QOrganizerEventOccurrence read2 = QOrganizerEventOccurrence(items.takeFirst());
+    QVERIFY(read2.id().isNull());
+    QCOMPARE(read2.parentId(), event3.id());
+    QCOMPARE(read2.originalDate(), event3.startDateTime().date().addDays(1));
+    QCOMPARE(read2.startDateTime(), event3.startDateTime().addDays(1));
+    QOrganizerTodo read3 = QOrganizerTodo(items.takeFirst());
+    QCOMPARE(read3.id(), todo2.id());
+    QCOMPARE(read3.startDateTime(), todo2.startDateTime());
+    QOrganizerEventOccurrence read4 = QOrganizerEventOccurrence(items.takeFirst());
+    QCOMPARE(read4.id(), ex1.id());
+    QCOMPARE(read4.parentId(), event3.id());
+    QCOMPARE(read4.originalDate(), event3.startDateTime().date().addDays(2));
+    QCOMPARE(read4.startDateTime(), ex1.startDateTime());
+
+    // Open ended returns only non-recurring incidences
+    items = mManager->items(QDateTime(), QDateTime(), filter);
+    QCOMPARE(mManager->error(), QOrganizerManager::NoError);
+    QCOMPARE(items.count(), 2);
 }
 
 #include "tst_engine.moc"
