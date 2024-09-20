@@ -825,6 +825,53 @@ QList<QOrganizerItem> ItemCalendars::items(const QString &managerUri,
     return items;
 }
 
+QList<QOrganizerItem> ItemCalendars::occurrences(const QString &managerUri,
+                                                 const QOrganizerItem &parentItem,
+                                                 const QDateTime &startDateTime,
+                                                 const QDateTime &endDateTime,
+                                                 int maxCount,
+                                                 const QList<QOrganizerItemDetail::DetailType> &details) const
+{
+    QList<QOrganizerItem> items;
+
+    KCalendarCore::Incidence::Ptr parent = incidence(parentItem.id().localId());
+    if (!parent) {
+        return items;
+    }
+    const QByteArray notebookUid = notebook(parent).toUtf8();
+
+    int count = 0;
+    KCalendarCore::OccurrenceIterator it(*this, parent, startDateTime, endDateTime);
+    while (it.hasNext() && (count < maxCount || maxCount < 1)) {
+        it.next();
+        QOrganizerItem item;
+        if (it.incidence()->hasRecurrenceId()) {
+            item.setId(QOrganizerItemId(managerUri,
+                                        it.incidence()->instanceIdentifier().toUtf8()));
+        }
+        item.setCollectionId(QOrganizerCollectionId(managerUri, notebookUid));
+        switch (parent->type()) {
+        case KCalendarCore::Incidence::TypeEvent:
+            toItemEvent(&item, it.incidence().staticCast<KCalendarCore::Event>(), details,
+                        it.occurrenceStartDate(), it.occurrenceEndDate(), it.recurrenceId());
+            break;
+        case KCalendarCore::Incidence::TypeTodo:
+            toItemTodo(&item, it.incidence().staticCast<KCalendarCore::Todo>(), details,
+                       it.occurrenceStartDate(), it.occurrenceEndDate(), it.recurrenceId());
+            break;
+        case KCalendarCore::Incidence::TypeJournal:
+            toItemJournal(&item, it.incidence().staticCast<KCalendarCore::Journal>(), details);
+            break;
+        default:
+            break;
+        }
+        items.append(item);
+        count += 1;
+    }
+
+    return items;
+}
+
 QByteArray ItemCalendars::addItem(const QOrganizerItem &item)
 {
     if (item.collectionId().isNull()) {

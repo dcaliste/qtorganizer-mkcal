@@ -89,6 +89,12 @@ public:
                 const QDateTime &endDateTime,
                 const QList<QtOrganizer::QOrganizerItemSortOrder> &sortOrders,
                 QtOrganizer::QOrganizerManager::Error *error) override;
+    QList<QtOrganizer::QOrganizerItem>
+        itemOccurrences(const QtOrganizer::QOrganizerItem &parentItem,
+                        const QDateTime &startDateTime,
+                        const QDateTime &endDateTime, int maxCount,
+                        const QtOrganizer::QOrganizerItemFetchHint &fetchHint,
+                        QtOrganizer::QOrganizerManager::Error *error) override;
     
     bool saveItems(QList<QtOrganizer::QOrganizerItem> *items,
                    const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask,

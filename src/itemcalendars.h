@@ -51,6 +51,12 @@ public:
                                              const QDateTime &endDateTime,
                                              int maxCount,
                                              const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &details) const;
+    QList<QtOrganizer::QOrganizerItem> occurrences(const QString &managerUri,
+                                                   const QtOrganizer::QOrganizerItem &parentItem,
+                                                   const QDateTime &startDateTime,
+                                                   const QDateTime &endDateTime,
+                                                   int maxCount,
+                                                   const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &details) const;
     
     QByteArray addItem(const QtOrganizer::QOrganizerItem &item);
     bool updateItem(const QtOrganizer::QOrganizerItem &item,

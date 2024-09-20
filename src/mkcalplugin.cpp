@@ -364,6 +364,30 @@ QList<QOrganizerItemId> mKCalEngine::itemIds(const QOrganizerItemFilter &filter,
     return ids;
 }
 
+QList<QOrganizerItem> mKCalEngine::itemOccurrences(const QOrganizerItem &parentItem,
+                                                   const QDateTime &startDateTime,
+                                                   const QDateTime &endDateTime, int maxCount,
+                                                   const QOrganizerItemFetchHint &fetchHint,
+                                                   QOrganizerManager::Error *error)
+{
+    QList<QOrganizerItem> items;
+    if (isOpened()
+        && parentItem.id().managerUri() == managerUri()
+        && mStorage->load(parentItem.id().localId())) {
+        items = mCalendars->occurrences(managerUri(), parentItem,
+                                        startDateTime, endDateTime,
+                                        maxCount, fetchHint.detailTypesHint());
+        std::sort(items.begin(), items.end(),
+                  [] (const QOrganizerItem &item1, const QOrganizerItem &item2) {
+                      return itemStartDateTime(item1) < itemStartDateTime(item2);
+                  });
+    } else {
+        *error = QOrganizerManager::PermissionsError;
+    }
+
+    return items;
+}
+
 bool mKCalEngine::saveItems(QList<QOrganizerItem> *items,
                             const QList<QOrganizerItemDetail::DetailType> &detailMask,
                             QMap<int, QOrganizerManager::Error> *errorMap,

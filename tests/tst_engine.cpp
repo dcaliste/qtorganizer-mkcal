@@ -994,6 +994,25 @@ void tst_engine::testExceptionIO()
     QCOMPARE(p.parentId(), detail.parentId());
     QCOMPARE(p.originalDate(), detail.originalDate());
 
+    QList<QOrganizerItem> items
+        = manager.itemOccurrences(parent,
+                                  QDateTime(QDate(2024, 9, 15),
+                                            QTime(), QTimeZone("Europe/Paris")),
+                                  QDateTime(QDate(2024, 9, 22),
+                                            QTime(), QTimeZone("Europe/Paris")));
+    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+    QCOMPARE(items.count(), 5);
+    QCOMPARE(QOrganizerEventOccurrence(items.takeFirst()).startDateTime(),
+             QOrganizerEvent(parent).startDateTime());
+    QCOMPARE(QOrganizerEventOccurrence(items.takeFirst()).startDateTime(),
+             QOrganizerEvent(parent).startDateTime().addDays(1));
+    QCOMPARE(QOrganizerEventOccurrence(items.takeFirst()).startDateTime(),
+             QOrganizerEvent(parent).startDateTime().addDays(3));
+    QCOMPARE(QOrganizerEventOccurrence(items.takeFirst()).startDateTime(),
+             time2.startDateTime());
+    QCOMPARE(QOrganizerEventOccurrence(items.takeFirst()).startDateTime(),
+             QOrganizerEvent(parent).startDateTime().addDays(4));
+
     QVERIFY(mManager->removeItem(parent.id()));
 
     QTRY_COMPARE(dataChanged.count(), 3);
