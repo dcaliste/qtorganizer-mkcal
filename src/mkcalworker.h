@@ -29,47 +29,45 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
  */
 
-#ifndef MKCALPLUGIN_H
-#define MKCALPLUGIN_H
+#ifndef MKCALWORKER_H
+#define MKCALWORKER_H
 
+#include <QObject>
 #include <QSharedPointer>
-#include <QThread>
-#include <QQueue>
 
-#include <QOrganizerManagerEngineFactoryInterface>
-#include <QOrganizerManagerEngine>
+#include <QtOrganizer/QOrganizerManagerEngine>
 
-#include "mkcalworker.h"
+#include <sqlitestorage.h>
+#include <extendedstorageobserver.h>
 
-class mKCalFactory : public QtOrganizer::QOrganizerManagerEngineFactory
+#include "itemcalendars.h"
+
+class mKCalWorker : public QtOrganizer::QOrganizerManagerEngine, public mKCal::ExtendedStorageObserver
 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QOrganizerManagerEngineFactoryInterface")
-
+    
 public:
-    QtOrganizer::QOrganizerManagerEngine* engine(const QMap<QString, QString>& parameters,
-                                                 QtOrganizer::QOrganizerManager::Error*);
-    QString managerName() const;
-};
-
-class mKCalEngine : public QtOrganizer::QOrganizerManagerEngine
-{
-    Q_OBJECT
-
-public:
-    mKCalEngine(const QTimeZone &timeZone, const QString &databaseName,
-                QObject *parent = nullptr);
-    ~mKCalEngine();
-
-    bool isOpened() const;
+    mKCalWorker(QObject *parent = nullptr);
+    ~mKCalWorker();
 
     QString managerName() const override;
     QMap<QString, QString> managerParameters() const override;
 
-    QList<QtOrganizer::QOrganizerItemFilter::FilterType> supportedFilters() const override;
-    QList<QtOrganizer::QOrganizerItemDetail::DetailType> supportedItemDetails(QtOrganizer::QOrganizerItemType::ItemType itemType) const override;
-    QList<QtOrganizer::QOrganizerItemType::ItemType> supportedItemTypes() const override;
+public slots:
+    bool init(const QTimeZone &timeZone, const QString &databaseName);
+    void runRequest(QtOrganizer::QOrganizerAbstractRequest *request);
+    QtOrganizer::QOrganizerCollectionId defaultCollectionId() const override;
 
+signals:
+    void defaultCollectionIdChanged(const QString &id);
+    void itemsUpdated(const QStringList &added,
+                      const QStringList &modified,
+                      const QStringList &deleted);
+    void collectionsUpdated(const QStringList &added,
+                            const QStringList &modified,
+                            const QStringList &deleted);
+
+private:
     QList<QtOrganizer::QOrganizerItem>
         items(const QList<QtOrganizer::QOrganizerItemId> &itemIds,
               const QtOrganizer::QOrganizerItemFetchHint &fetchHint,
@@ -94,7 +92,7 @@ public:
                         const QDateTime &endDateTime, int maxCount,
                         const QtOrganizer::QOrganizerItemFetchHint &fetchHint,
                         QtOrganizer::QOrganizerManager::Error *error) override;
-    
+
     bool saveItems(QList<QtOrganizer::QOrganizerItem> *items,
                    const QList<QtOrganizer::QOrganizerItemDetail::DetailType> &detailMask,
                    QMap<int, QtOrganizer::QOrganizerManager::Error> *errorMap,
@@ -106,31 +104,28 @@ public:
                      QMap<int, QtOrganizer::QOrganizerManager::Error> *errorMap,
                      QtOrganizer::QOrganizerManager::Error *error) override;
 
-    QtOrganizer::QOrganizerCollectionId defaultCollectionId() const override;
-    QtOrganizer::QOrganizerCollection collection(const QtOrganizer::QOrganizerCollectionId &collectionId,
-                                                 QtOrganizer::QOrganizerManager::Error *error) const override;
     QList<QtOrganizer::QOrganizerCollection> collections(QtOrganizer::QOrganizerManager::Error *error) const override;
     bool saveCollection(QtOrganizer::QOrganizerCollection *collection,
                         QtOrganizer::QOrganizerManager::Error *error) override;
+    bool saveCollections(QList<QtOrganizer::QOrganizerCollection> *collections,
+                         QMap<int, QtOrganizer::QOrganizerManager::Error> *errors,
+                         QtOrganizer::QOrganizerManager::Error *error);
     bool removeCollection(const QtOrganizer::QOrganizerCollectionId &collectionId,
                           QtOrganizer::QOrganizerManager::Error *error) override;
+    bool removeCollections(const QList<QtOrganizer::QOrganizerCollectionId> &collectionIds,
+                           QMap<int, QtOrganizer::QOrganizerManager::Error> *errors,
+                           QtOrganizer::QOrganizerManager::Error *error);
 
-    void requestDestroyed(QtOrganizer::QOrganizerAbstractRequest *request) override;
-    bool startRequest(QtOrganizer::QOrganizerAbstractRequest *request) override;
-    bool cancelRequest(QtOrganizer::QOrganizerAbstractRequest *request) override;
-    bool waitForRequestFinished(QtOrganizer::QOrganizerAbstractRequest *request, int msecs) override;
+    void storageModified(mKCal::ExtendedStorage *storage, const QString &info) override;
+    void storageUpdated(mKCal::ExtendedStorage *storage,
+                        const KCalendarCore::Incidence::List &added,
+                        const KCalendarCore::Incidence::List &modified,
+                        const KCalendarCore::Incidence::List &deleted) override;
 
-private:
-    void processRequests();
-    bool waitForCurrentRequestFinished(int msecs);
-
-    QMap<QString, QString> mParameters;
-    QThread mWorkerThread;
-    mKCalWorker *mWorker = nullptr;
+    QSharedPointer<ItemCalendars> mCalendars;
+    mKCal::SqliteStorage::Ptr mStorage;
     bool mOpened = false;
-    QtOrganizer::QOrganizerCollectionId mDefaultCollectionId;
-    QtOrganizer::QOrganizerAbstractRequest *mRunningRequest = nullptr;
-    QQueue<QtOrganizer::QOrganizerAbstractRequest*> mRequests;
+    QString mDefaultNotebookUid;
 };
 
 #endif

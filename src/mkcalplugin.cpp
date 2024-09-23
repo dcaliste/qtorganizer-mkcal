@@ -31,15 +31,20 @@
 
 #include "mkcalplugin.h"
 
-#include <algorithm>
+#include <QtOrganizer/QOrganizerItemOccurrenceFetchRequest>
+#include <QtOrganizer/QOrganizerItemFetchRequest>
+#include <QtOrganizer/QOrganizerItemIdFetchRequest>
+#include <QtOrganizer/QOrganizerItemFetchByIdRequest>
+#include <QtOrganizer/QOrganizerItemRemoveRequest>
+#include <QtOrganizer/QOrganizerItemRemoveByIdRequest>
+#include <QtOrganizer/QOrganizerItemSaveRequest>
+#include <QtOrganizer/QOrganizerCollectionFetchRequest>
+#include <QtOrganizer/QOrganizerCollectionSaveRequest>
+#include <QtOrganizer/QOrganizerCollectionRemoveRequest>
 
-#include <QtOrganizer/QOrganizerEvent>
-#include <QtOrganizer/QOrganizerEventOccurrence>
-#include <QtOrganizer/QOrganizerTodo>
-#include <QtOrganizer/QOrganizerTodoOccurrence>
-#include <QtOrganizer/QOrganizerJournal>
-
-#include "helper.h"
+#include <QElapsedTimer>
+#include <QTimer>
+#include <QEventLoop>
 
 using namespace QtOrganizer;
 
@@ -60,24 +65,129 @@ QString mKCalFactory::managerName() const
     return QStringLiteral("mkcal");
 }
 
+Q_DECLARE_METATYPE(QTimeZone)
 mKCalEngine::mKCalEngine(const QTimeZone &timeZone, const QString &databaseName,
                          QObject *parent)
     : QOrganizerManagerEngine(parent)
-    , mCalendars(new ItemCalendars(timeZone))
 {
-    if (databaseName.isEmpty()) {
-        mStorage = mKCal::SqliteStorage::Ptr(new mKCal::SqliteStorage(mCalendars));
-    } else {
-        mStorage = mKCal::SqliteStorage::Ptr(new mKCal::SqliteStorage(mCalendars, databaseName));
-    }
-    mOpened = mStorage->open();
-    mStorage->registerObserver(this);
+    qRegisterMetaType<QOrganizerAbstractRequest*>();
+
+    mWorker = new mKCalWorker;
+    mWorker->moveToThread(&mWorkerThread);
+    connect(&mWorkerThread, &QThread::finished,
+            mWorker, &QObject::deleteLater);
+
+    connect(mWorker, &mKCalWorker::dataChanged,
+            this, &mKCalEngine::dataChanged);
+    connect(mWorker, &mKCalWorker::itemsUpdated,
+            this, [this] (const QStringList &added,
+                          const QStringList &modified,
+                          const QStringList &deleted) {
+                      QList<QOrganizerItemId> ids;
+                      QList<QPair<QOrganizerItemId, QOrganizerManager::Operation>> ops;
+
+                      ids.clear();
+                      for (const QString &uid : added) {
+                          const QOrganizerItemId id = itemId(uid.toUtf8());
+                          ids << id;
+                          ops << QPair<QOrganizerItemId, QOrganizerManager::Operation>(id, QOrganizerManager::Add);
+                      }
+                      if (!ids.isEmpty()) {
+                          emit itemsAdded(ids);
+                      }
+
+                      ids.clear();
+                      for (const QString &uid : modified) {
+                          const QOrganizerItemId id = itemId(uid.toUtf8());
+                          ids << id;
+                          ops << QPair<QOrganizerItemId, QOrganizerManager::Operation>(id, QOrganizerManager::Change);
+                      }
+                      if (!ids.isEmpty()) {
+                          emit itemsChanged(ids, QList<QOrganizerItemDetail::DetailType>());
+                      }
+
+                      ids.clear();
+                      for (const QString &uid : deleted) {
+                          const QOrganizerItemId id = itemId(uid.toUtf8());
+                          ids << id;
+                          ops << QPair<QOrganizerItemId, QOrganizerManager::Operation>(id, QOrganizerManager::Remove);
+                      }
+                      if (!ids.isEmpty()) {
+                          emit itemsRemoved(ids);
+                      }
+
+                      if (!ops.isEmpty()) {
+                          emit itemsModified(ops);
+                      }
+                  });
+    connect(mWorker, &mKCalWorker::collectionsUpdated,
+            this, [this] (const QStringList &added,
+                          const QStringList &modified,
+                          const QStringList &deleted) {
+                      QList<QOrganizerCollectionId> ids;
+                      QList<QPair<QOrganizerCollectionId, QOrganizerManager::Operation>> ops;
+
+                      ids.clear();
+                      for (const QString &uid : added) {
+                          const QOrganizerCollectionId id = collectionId(uid.toUtf8());
+                          ids << id;
+                          ops << QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(id, QOrganizerManager::Add);
+                      }
+                      if (!ids.isEmpty()) {
+                          emit collectionsAdded(ids);
+                      }
+
+                      ids.clear();
+                      for (const QString &uid : modified) {
+                          const QOrganizerCollectionId id = collectionId(uid.toUtf8());
+                          ids << id;
+                          ops << QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(id, QOrganizerManager::Change);
+                      }
+                      if (!ids.isEmpty()) {
+                          emit collectionsChanged(ids);
+                      }
+
+                      ids.clear();
+                      for (const QString &uid : deleted) {
+                          const QOrganizerCollectionId id = collectionId(uid.toUtf8());
+                          ids << id;
+                          ops << QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(id, QOrganizerManager::Remove);
+                      }
+                      if (!ids.isEmpty()) {
+                          emit collectionsRemoved(ids);
+                      }
+
+                      if (!ops.isEmpty()) {
+                          emit collectionsModified(ops);
+                      }
+                  });
+    connect(mWorker, &mKCalWorker::defaultCollectionIdChanged,
+            this, [this] (const QString &id) {
+                      if (id.toUtf8() != mDefaultCollectionId.localId()) {
+                          mDefaultCollectionId = collectionId(id.toUtf8());
+                      }
+                  });
+
+    mWorkerThread.setObjectName("mKCal worker");
+    mWorkerThread.start();
+
+    qRegisterMetaType<QTimeZone>();
+    QMetaObject::invokeMethod(mWorker, "init", Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(bool, mOpened),
+                              Q_ARG(QTimeZone, timeZone),
+                              Q_ARG(QString, databaseName));
+    mParameters.insert(QStringLiteral("timeZone"),
+                       QString::fromUtf8(timeZone.id()));
+    mParameters.insert(QStringLiteral("databaseName"), databaseName);
+    QMetaObject::invokeMethod(mWorker, "defaultCollectionId",
+                              Qt::BlockingQueuedConnection,
+                              Q_RETURN_ARG(QtOrganizer::QOrganizerCollectionId, mDefaultCollectionId));
 }
 
 mKCalEngine::~mKCalEngine()
 {
-    mStorage->unregisterObserver(this);
-    mStorage->close();
+    mWorkerThread.quit();
+    mWorkerThread.wait();
 }
 
 bool mKCalEngine::isOpened() const
@@ -92,92 +202,7 @@ QString mKCalEngine::managerName() const
 
 QMap<QString, QString> mKCalEngine::managerParameters() const
 {
-    QMap<QString, QString> parameters;
-
-    parameters.insert(QStringLiteral("timeZone"),
-                      QString::fromUtf8(mCalendars->timeZone().id()));
-    parameters.insert(QStringLiteral("databaseName"), mStorage->databaseName());
-
-    return parameters;
-}
-
-void mKCalEngine::storageModified(mKCal::ExtendedStorage *storage,
-                                  const QString &info)
-{
-    Q_UNUSED(storage);
-    Q_UNUSED(info);
-
-    emit dataChanged();
-}
-
-void mKCalEngine::storageUpdated(mKCal::ExtendedStorage *storage,
-                                 const KCalendarCore::Incidence::List &added,
-                                 const KCalendarCore::Incidence::List &modified,
-                                 const KCalendarCore::Incidence::List &deleted)
-{
-    Q_UNUSED(storage);
-
-    QList<QOrganizerItemId> ids;
-    QList<QPair<QOrganizerItemId, QOrganizerManager::Operation>> ops;
-
-    ids.clear();
-    ops.clear();
-    for (const KCalendarCore::Incidence::Ptr &incidence : added) {
-        const QOrganizerItemId id = itemId(incidence->uid().toUtf8());
-        ids << id;
-        ops << QPair<QOrganizerItemId, QOrganizerManager::Operation>(id, QOrganizerManager::Add);
-    }
-    if (!ids.isEmpty()) {
-        emit itemsAdded(ids);
-    }
-    if (!ops.isEmpty()) {
-        emit itemsModified(ops);
-    }
-
-    ids.clear();
-    ops.clear();
-    for (const KCalendarCore::Incidence::Ptr &incidence : modified) {
-        const QOrganizerItemId id = itemId(incidence->uid().toUtf8());
-        ids << id;
-        ops << QPair<QOrganizerItemId, QOrganizerManager::Operation>(id, QOrganizerManager::Change);
-    }
-    if (!ids.isEmpty()) {
-        emit itemsChanged(ids, QList<QOrganizerItemDetail::DetailType>());
-    }
-    if (!ops.isEmpty()) {
-        emit itemsModified(ops);
-    }
-
-    ids.clear();
-    ops.clear();
-    QMap<QString, KCalendarCore::Incidence::List> purgeList;
-    for (const KCalendarCore::Incidence::Ptr &incidence : deleted) {
-        const QOrganizerItemId id = itemId(incidence->uid().toUtf8());
-        ids << id;
-        ops << QPair<QOrganizerItemId, QOrganizerManager::Operation>(id, QOrganizerManager::Remove);
-        // if the incidence was stored in a local (non-synced) notebook, purge it.
-        mKCal::Notebook::Ptr notebook = mStorage->notebook(mCalendars->notebook(incidence));
-        if (notebook
-            && notebook->isMaster()
-            && !notebook->isShared()
-            && notebook->pluginName().isEmpty()) {
-            QMap<QString, KCalendarCore::Incidence::List>::Iterator it = purgeList.find(notebook->uid());
-            if (it == purgeList.end()) {
-                purgeList.insert(notebook->uid(), KCalendarCore::Incidence::List() << incidence);
-            } else {
-                it->append(incidence);
-            }
-        }
-    }
-    if (!ids.isEmpty()) {
-        emit itemsRemoved(ids);
-    }
-    if (!ops.isEmpty()) {
-        emit itemsModified(ops);
-    }
-    for (QMap<QString, KCalendarCore::Incidence::List>::ConstIterator it = purgeList.constBegin(); it != purgeList.constEnd(); ++it) {
-        mStorage->purgeDeletedIncidences(it.value(), it.key());
-    }
+    return mParameters;
 }
 
 QList<QOrganizerItemType::ItemType> mKCalEngine::supportedItemTypes() const
@@ -249,45 +274,14 @@ QList<QOrganizerItem> mKCalEngine::items(const QList<QOrganizerItemId> &itemIds,
                                          QMap<int, QOrganizerManager::Error> *errorMap,
                                          QOrganizerManager::Error *error)
 {
-    QList<QOrganizerItem> items;
-    if (isOpened()) {
-        int index = 0;
-        for (const QOrganizerItemId &id : itemIds) {
-            if (id.managerUri() == managerUri()
-                && mStorage->loadIncidenceInstance(id.localId())) {
-                const QOrganizerItem item = mCalendars->item(id, fetchHint.detailTypesHint());
-                if (!item.isEmpty()) {
-                    items.append(item);
-                } else {
-                    *error = QOrganizerManager::PermissionsError;
-                }
-            } else {
-                *error = QOrganizerManager::DoesNotExistError;
-            }
-            index += 1;
-        }
-    } else {
-        *error = QOrganizerManager::PermissionsError;
-    }
-
-    return items;
-}
-
-static QDateTime itemStartDateTime(const QOrganizerItem &item)
-{
-    switch (item.type()) {
-    case QOrganizerItemType::TypeEvent:
-        return QOrganizerEvent(item).startDateTime();
-    case QOrganizerItemType::TypeEventOccurrence:
-        return QOrganizerEventOccurrence(item).startDateTime();
-    case QOrganizerItemType::TypeTodo:
-        return QOrganizerTodo(item).startDateTime();
-    case QOrganizerItemType::TypeTodoOccurrence:
-        return QOrganizerTodoOccurrence(item).startDateTime();
-    case QOrganizerItemType::TypeJournal:
-        return QOrganizerJournal(item).dateTime();
-    }
-    return QDateTime();
+    QOrganizerItemFetchByIdRequest request(this);
+    request.setIds(itemIds);
+    request.setFetchHint(fetchHint);
+    QMetaObject::invokeMethod(mWorker, "runRequest", Qt::BlockingQueuedConnection,
+                              Q_ARG(QtOrganizer::QOrganizerAbstractRequest*, &request));
+    *error = request.error();
+    *errorMap = request.errorMap();
+    return request.items();
 }
 
 QList<QOrganizerItem> mKCalEngine::items(const QOrganizerItemFilter &filter,
@@ -297,25 +291,17 @@ QList<QOrganizerItem> mKCalEngine::items(const QOrganizerItemFilter &filter,
                                          const QOrganizerItemFetchHint &fetchHint,
                                          QOrganizerManager::Error *error)
 {
-    QList<QOrganizerItem> items;
-    if (isOpened() && mStorage->load(startDateTime.date(), endDateTime.date().addDays(1))) {
-        items = mCalendars->items(managerUri(), filter,
-                                  startDateTime, endDateTime, maxCount,
-                                  fetchHint.detailTypesHint());
-        std::sort(items.begin(), items.end(),
-                  [sortOrders] (const QOrganizerItem &item1, const QOrganizerItem &item2) {
-                      int cmp = compareItem(item1, item2, sortOrders);
-                      if (cmp == 0) {
-                          return itemStartDateTime(item1) < itemStartDateTime(item2);
-                      } else {
-                          return (cmp < 0);
-                      }
-                  });
-    } else {
-        *error = QOrganizerManager::PermissionsError;
-    }
-
-    return items;
+    QOrganizerItemFetchRequest request(this);
+    request.setFilter(filter);
+    request.setStartDate(startDateTime);
+    request.setEndDate(endDateTime);
+    request.setMaxCount(maxCount);
+    request.setSorting(sortOrders);
+    request.setFetchHint(fetchHint);
+    QMetaObject::invokeMethod(mWorker, "runRequest", Qt::BlockingQueuedConnection,
+                              Q_ARG(QtOrganizer::QOrganizerAbstractRequest*, &request));
+    *error = request.error();
+    return request.items();
 }
 
 QList<QOrganizerItemId> mKCalEngine::itemIds(const QOrganizerItemFilter &filter,
@@ -324,44 +310,15 @@ QList<QOrganizerItemId> mKCalEngine::itemIds(const QOrganizerItemFilter &filter,
                                              const QList<QOrganizerItemSortOrder> &sortOrders,
                                              QOrganizerManager::Error *error)
 {
-    QList<QOrganizerItemId> ids;
-    if (isOpened() && mStorage->load(startDateTime.date(), endDateTime.date().addDays(1))) {
-        QList<QOrganizerItem> items = mCalendars->items(managerUri(), filter,
-                                                        startDateTime, endDateTime,
-                                                        0, QList<QOrganizerItemDetail::DetailType>());
-        std::sort(items.begin(), items.end(),
-                  [sortOrders] (const QOrganizerItem &item1, const QOrganizerItem &item2) {
-                      int cmp = compareItem(item1, item2, sortOrders);
-                      if (cmp == 0) {
-                          return itemStartDateTime(item1) < itemStartDateTime(item2);
-                      } else {
-                          return (cmp < 0);
-                      }
-                  });
-        QSet<QString> localIds;
-        for (const QOrganizerItem &item : items) {
-            if (!item.id().isNull()) {
-                ids.append(item.id());
-                localIds.insert(item.id().localId());
-            } else if (item.type() == QOrganizerItemType::TypeEventOccurrence) {
-                const QOrganizerEventOccurrence occurrence(item);
-                if (!localIds.contains(occurrence.parentId().localId())) {
-                    ids.append(occurrence.parentId());
-                    localIds.insert(occurrence.parentId().localId());
-                }
-            } else if (item.type() == QOrganizerItemType::TypeTodoOccurrence) {
-                const QOrganizerTodoOccurrence occurrence(item);
-                if (!localIds.contains(occurrence.parentId().localId())) {
-                    ids.append(occurrence.parentId());
-                    localIds.insert(occurrence.parentId().localId());
-                }
-            }
-        }
-    } else {
-        *error = QOrganizerManager::PermissionsError;
-    }
-
-    return ids;
+    QOrganizerItemIdFetchRequest request(this);
+    request.setFilter(filter);
+    request.setStartDate(startDateTime);
+    request.setEndDate(endDateTime);
+    request.setSorting(sortOrders);
+    QMetaObject::invokeMethod(mWorker, "runRequest", Qt::BlockingQueuedConnection,
+                              Q_ARG(QtOrganizer::QOrganizerAbstractRequest*, &request));
+    *error = request.error();
+    return request.itemIds();
 }
 
 QList<QOrganizerItem> mKCalEngine::itemOccurrences(const QOrganizerItem &parentItem,
@@ -370,22 +327,16 @@ QList<QOrganizerItem> mKCalEngine::itemOccurrences(const QOrganizerItem &parentI
                                                    const QOrganizerItemFetchHint &fetchHint,
                                                    QOrganizerManager::Error *error)
 {
-    QList<QOrganizerItem> items;
-    if (isOpened()
-        && parentItem.id().managerUri() == managerUri()
-        && mStorage->load(parentItem.id().localId())) {
-        items = mCalendars->occurrences(managerUri(), parentItem,
-                                        startDateTime, endDateTime,
-                                        maxCount, fetchHint.detailTypesHint());
-        std::sort(items.begin(), items.end(),
-                  [] (const QOrganizerItem &item1, const QOrganizerItem &item2) {
-                      return itemStartDateTime(item1) < itemStartDateTime(item2);
-                  });
-    } else {
-        *error = QOrganizerManager::PermissionsError;
-    }
-
-    return items;
+    QOrganizerItemOccurrenceFetchRequest request(this);
+    request.setParentItem(parentItem);
+    request.setStartDate(startDateTime);
+    request.setEndDate(endDateTime);
+    request.setMaxOccurrences(maxCount);
+    request.setFetchHint(fetchHint);
+    QMetaObject::invokeMethod(mWorker, "runRequest", Qt::BlockingQueuedConnection,
+                              Q_ARG(QtOrganizer::QOrganizerAbstractRequest*, &request));
+    *error = request.error();
+    return request.itemOccurrences();
 }
 
 bool mKCalEngine::saveItems(QList<QOrganizerItem> *items,
@@ -393,36 +344,14 @@ bool mKCalEngine::saveItems(QList<QOrganizerItem> *items,
                             QMap<int, QOrganizerManager::Error> *errorMap,
                             QOrganizerManager::Error *error)
 {
-    *error = QOrganizerManager::NoError;
-    if (isOpened()) {
-        int index = 0;
-        for (QOrganizerItem &item : *items) {
-            if (item.id().isNull()) {
-                if (item.collectionId().isNull()) {
-                    item.setCollectionId(defaultCollectionId());
-                }
-                const QByteArray localId = mCalendars->addItem(item);
-                if (localId.isEmpty()) {
-                    errorMap->insert(index, QOrganizerManager::InvalidItemTypeError);
-                } else {
-                    item.setId(itemId(localId));
-                }
-            } else if (item.id().managerUri() == managerUri()) {
-                if (!mCalendars->updateItem(item, detailMask)) {
-                    errorMap->insert(index, QOrganizerManager::DoesNotExistError);
-                }
-            } else {
-                *error = QOrganizerManager::DoesNotExistError;
-            }
-            index += 1;
-        }
-        if (!mStorage->save()) {
-            *error = QOrganizerManager::PermissionsError;
-        }
-    } else {
-        *error = QOrganizerManager::PermissionsError;
-    }
-
+    QOrganizerItemSaveRequest request(this);
+    request.setItems(*items);
+    request.setDetailMask(detailMask);
+    QMetaObject::invokeMethod(mWorker, "runRequest", Qt::BlockingQueuedConnection,
+                              Q_ARG(QtOrganizer::QOrganizerAbstractRequest*, &request));
+    *error = request.error();
+    *errorMap = request.errorMap();
+    *items = request.items();
     return (*error == QOrganizerManager::NoError)
         && errorMap->isEmpty();
 }
@@ -431,27 +360,12 @@ bool mKCalEngine::removeItems(const QList<QOrganizerItemId> &itemIds,
                               QMap<int, QOrganizerManager::Error> *errorMap,
                               QOrganizerManager::Error *error)
 {
-    *error = QOrganizerManager::NoError;
-    if (isOpened()) {
-        int index = 0;
-        for (const QOrganizerItemId &id : itemIds) {
-            if (id.managerUri() == managerUri() && !id.localId().isEmpty()) {
-                KCalendarCore::Incidence::Ptr doomed = mCalendars->instance(id.localId());
-                if (doomed && !mCalendars->deleteIncidence(doomed)) {
-                    errorMap->insert(index, QOrganizerManager::PermissionsError);
-                }
-            } else {
-                *error = QOrganizerManager::DoesNotExistError;
-            }
-            index += 1;
-        }
-        if (!mStorage->save()) {
-            *error = QOrganizerManager::PermissionsError;
-        }
-    } else {
-        *error = QOrganizerManager::PermissionsError;
-    }
-
+    QOrganizerItemRemoveByIdRequest request(this);
+    request.setItemIds(itemIds);
+    QMetaObject::invokeMethod(mWorker, "runRequest", Qt::BlockingQueuedConnection,
+                              Q_ARG(QtOrganizer::QOrganizerAbstractRequest*, &request));
+    *error = request.error();
+    *errorMap = request.errorMap();
     return (*error == QOrganizerManager::NoError)
         && errorMap->isEmpty();
 }
@@ -460,61 +374,32 @@ bool mKCalEngine::removeItems(const QList<QOrganizerItem> *items,
                               QMap<int, QOrganizerManager::Error> *errorMap,
                               QOrganizerManager::Error *error)
 {
-    *error = QOrganizerManager::NoError;
-    if (isOpened()) {
-        int index = 0;
-        for (const QOrganizerItem &item : *items) {
-            if (item.id().isNull()
-                || (item.id().managerUri() == managerUri()
-                    && !item.id().localId().isEmpty())) {
-                if (!mCalendars->removeItem(item)) {
-                    errorMap->insert(index, QOrganizerManager::PermissionsError);
-                }
-            } else {
-                *error = QOrganizerManager::DoesNotExistError;
-            }
-            index += 1;
-        }
-        if (!mStorage->save()) {
-            *error = QOrganizerManager::PermissionsError;
-        }
-    } else {
-        *error = QOrganizerManager::PermissionsError;
-    }
-
+    QOrganizerItemRemoveRequest request(this);
+    request.setItems(*items);
+    QMetaObject::invokeMethod(mWorker, "runRequest", Qt::BlockingQueuedConnection,
+                              Q_ARG(QtOrganizer::QOrganizerAbstractRequest*, &request));
+    *error = request.error();
+    *errorMap = request.errorMap();
     return (*error == QOrganizerManager::NoError)
         && errorMap->isEmpty();
 }
 
 QOrganizerCollectionId mKCalEngine::defaultCollectionId() const
 {
-    mKCal::Notebook::Ptr nb = mStorage->defaultNotebook();
-    if (isOpened() && !nb) {
-        nb = mKCal::Notebook::Ptr(new mKCal::Notebook(QStringLiteral("Default"),
-                                                      QString()));
-        if (!mStorage->setDefaultNotebook(nb)) {
-            nb.clear();
-        }
-    }
-
-    return (isOpened() && nb)
-        ? collectionId(nb->uid().toUtf8())
-        : QOrganizerCollectionId();
+    return mDefaultCollectionId;
 }
 
 QOrganizerCollection mKCalEngine::collection(const QOrganizerCollectionId &collectionId,
-                                                          QOrganizerManager::Error *error) const
+                                             QOrganizerManager::Error *error) const
 {
-    *error = QOrganizerManager::NoError;
-    if (isOpened()) {
-        mKCal::Notebook::Ptr nb = mStorage->notebook(collectionId.localId());
-        if (collectionId.managerUri() == managerUri() && nb) {
-            return toCollection(managerUri(), nb);
-        } else {
-            *error = QOrganizerManager::DoesNotExistError;
+    QOrganizerCollectionFetchRequest request;
+    QMetaObject::invokeMethod(mWorker, "runRequest", Qt::BlockingQueuedConnection,
+                              Q_ARG(QtOrganizer::QOrganizerAbstractRequest*, &request));
+    *error = request.error();
+    for (const QOrganizerCollection &collection : request.collections()) {
+        if (collection.id() == collectionId) {
+            return collection;
         }
-    } else {
-        *error = QOrganizerManager::PermissionsError;
     }
 
     return QOrganizerCollection();
@@ -522,73 +407,131 @@ QOrganizerCollection mKCalEngine::collection(const QOrganizerCollectionId &colle
 
 QList<QOrganizerCollection> mKCalEngine::collections(QOrganizerManager::Error *error) const
 {
-    QList<QOrganizerCollection> ret;
-
-    *error = QOrganizerManager::NoError;
-    if (isOpened()) {
-        for (const mKCal::Notebook::Ptr &nb : mStorage->notebooks()) {
-            ret.append(toCollection(managerUri(), nb));
-        }
-    } else {
-        *error = QOrganizerManager::PermissionsError;
-    }
-
-    return ret;
+    QOrganizerCollectionFetchRequest request;
+    QMetaObject::invokeMethod(mWorker, "runRequest", Qt::BlockingQueuedConnection,
+                              Q_ARG(QtOrganizer::QOrganizerAbstractRequest*, &request));
+    *error = request.error();
+    return request.collections();
 }
 
 bool mKCalEngine::saveCollection(QOrganizerCollection *collection,
                                  QOrganizerManager::Error *error)
 {
-    *error = QOrganizerManager::NoError;
-    if (isOpened()) {
-        if (collection->id().isNull()) {
-            mKCal::Notebook::Ptr nb(new mKCal::Notebook);
-            updateNotebook(nb, *collection);
-            if (!mStorage->addNotebook(nb)) {
-                *error = QOrganizerManager::PermissionsError;
-            } else {
-                collection->setId(collectionId(nb->uid().toUtf8()));
-                emit collectionsAdded(QList<QOrganizerCollectionId>() << collection->id());
-                emit collectionsModified(QList<QPair<QOrganizerCollectionId, QOrganizerManager::Operation> >() << QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(collection->id(), QOrganizerManager::Add));
-            }
-        } else {
-            mKCal::Notebook::Ptr nb = mStorage->notebook(collection->id().localId());
-            if (nb) {
-                updateNotebook(nb, *collection);
-                if (!mStorage->updateNotebook(nb)) {
-                    *error = QOrganizerManager::PermissionsError;
-                } else {
-                    emit collectionsChanged(QList<QOrganizerCollectionId>() << collection->id());
-                    emit collectionsModified(QList<QPair<QOrganizerCollectionId, QOrganizerManager::Operation> >() << QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(collection->id(), QOrganizerManager::Change));
-                }
-            } else {
-                *error = QOrganizerManager::DoesNotExistError;
-            }
-        }
-    } else {
-        *error = QOrganizerManager::PermissionsError;
-    }
-
-    return *error == QOrganizerManager::NoError;
+    QOrganizerCollectionSaveRequest request;
+    request.setCollection(*collection);
+    QMetaObject::invokeMethod(mWorker, "runRequest", Qt::BlockingQueuedConnection,
+                              Q_ARG(QtOrganizer::QOrganizerAbstractRequest*, &request));
+    *error = request.error();
+    *collection = request.collections().first();
+    return (*error == QOrganizerManager::NoError);
 }
 
 bool mKCalEngine::removeCollection(const QOrganizerCollectionId &collectionId,
                                    QOrganizerManager::Error *error)
 {
-    *error = QOrganizerManager::NoError;
-    if (isOpened() && collectionId.managerUri() == managerUri()) {
-        mKCal::Notebook::Ptr nb = mStorage->notebook(collectionId.localId());
-        if (nb) {
-            if (!mStorage->deleteNotebook(nb)) {
-                *error = QOrganizerManager::PermissionsError;
-            } else {
-                emit collectionsRemoved(QList<QOrganizerCollectionId>() << collectionId);
-                emit collectionsModified(QList<QPair<QOrganizerCollectionId, QOrganizerManager::Operation> >() << QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(collectionId, QOrganizerManager::Remove));
-            }
-        }
-    } else {
-        *error = QOrganizerManager::PermissionsError;
+    QOrganizerCollectionRemoveRequest request;
+    request.setCollectionId(collectionId);
+    QMetaObject::invokeMethod(mWorker, "runRequest", Qt::BlockingQueuedConnection,
+                              Q_ARG(QtOrganizer::QOrganizerAbstractRequest*, &request));
+    *error = request.error();
+    return (*error == QOrganizerManager::NoError);
+}
+
+bool mKCalEngine::waitForCurrentRequestFinished(int msecs)
+{
+    if (!mRunningRequest) {
+        return false;
     }
 
-    return *error == QOrganizerManager::NoError;
+    QTimer timer;
+    QEventLoop loop;
+    connect(mRunningRequest, &QOrganizerAbstractRequest::resultsAvailable,
+            &loop, &QEventLoop::quit);
+    if (msecs > 0) {
+        timer.setSingleShot(true);
+        connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+        timer.start(msecs);
+    }
+    loop.exec();
+
+    return msecs <= 0 || !timer.isActive();
+}
+
+void mKCalEngine::processRequests()
+{
+    if (mRunningRequest) {
+        disconnect(mRunningRequest, &QOrganizerAbstractRequest::resultsAvailable,
+                   this, &mKCalEngine::processRequests);
+        mRunningRequest = nullptr;
+    }
+    if (!mRequests.isEmpty()) {
+        QOrganizerAbstractRequest *request = mRequests.dequeue();
+        mRunningRequest = request;
+        connect(mRunningRequest, &QOrganizerAbstractRequest::resultsAvailable,
+                this, &mKCalEngine::processRequests);
+        QMetaObject::invokeMethod(mWorker, "runRequest", Qt::QueuedConnection,
+                                  Q_ARG(QtOrganizer::QOrganizerAbstractRequest*,
+                                        request));
+    }
+}
+
+void mKCalEngine::requestDestroyed(QOrganizerAbstractRequest *request)
+{
+    if (mRunningRequest == request) {
+        request->waitForFinished();
+    } else if (mRequests.contains(request)) {
+        cancelRequest(request);
+    }
+}
+
+bool mKCalEngine::startRequest(QOrganizerAbstractRequest *request)
+{
+    if (mRequests.contains(request)) {
+        return false;
+    }
+    updateRequestState(request, QOrganizerAbstractRequest::ActiveState);
+    mRequests.enqueue(request);
+    if (!mRunningRequest) {
+        processRequests();
+    }
+    return true;
+}
+
+bool mKCalEngine::cancelRequest(QOrganizerAbstractRequest *request)
+{
+    if (mRequests.removeAll(request) > 0) {
+        updateRequestState(request, QOrganizerAbstractRequest::CanceledState);
+    }
+    return request->isCanceled();
+}
+
+bool mKCalEngine::waitForRequestFinished(QOrganizerAbstractRequest *request, int msecs)
+{
+    int remaining = msecs;
+    if (mRunningRequest && mRunningRequest != request) {
+        QElapsedTimer timer;
+        if (msecs > 0) {
+            timer.start();
+        }
+        disconnect(mRunningRequest, &QOrganizerAbstractRequest::resultsAvailable,
+                   this, &mKCalEngine::processRequests);
+        bool finished = waitForCurrentRequestFinished(msecs);
+        remaining = timer.isValid() ? qMax(1, msecs - int(timer.elapsed())) : msecs;
+        while (finished
+               && !mRequests.isEmpty()
+               && (mRunningRequest = mRequests.dequeue()) != request) {
+            QMetaObject::invokeMethod(mWorker, "runRequest",
+                                      Qt::QueuedConnection,
+                                      Q_ARG(QtOrganizer::QOrganizerAbstractRequest*,
+                                            mRunningRequest));
+            finished = waitForCurrentRequestFinished(remaining);
+            remaining = timer.isValid() ? qMax(1, msecs - int(timer.elapsed())) : msecs;
+        }
+        connect(mRunningRequest, &QOrganizerAbstractRequest::resultsAvailable,
+                this, &mKCalEngine::processRequests);
+        if (!finished) {
+            return false;
+        }
+    }
+    return waitForCurrentRequestFinished(remaining);
 }

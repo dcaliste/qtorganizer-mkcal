@@ -1,9 +1,11 @@
 set(SRC
   mkcalplugin.cpp
+  mkcalworker.cpp
   itemcalendars.cpp
   helper.cpp)
 set(HEADERS
   mkcalplugin.h
+  mkcalworker.h
   itemcalendars.h
   helper.h)
 

@@ -207,9 +207,9 @@ void tst_engine::testCollectionIO()
     QVERIFY(mManager->saveCollection(&collection));
     QCOMPARE(mManager->error(), QOrganizerManager::NoError);
     QVERIFY(!collection.id().isNull());
-    QCOMPARE(added.count(), 1);
-    QVERIFY(modified.isEmpty());
-    QVERIFY(deleted.isEmpty());
+    QTRY_COMPARE(added.count(), 1);
+    QTRY_VERIFY(modified.isEmpty());
+    QTRY_VERIFY(deleted.isEmpty());
     QVERIFY(added.takeFirst()[0].value<QList<QOrganizerCollectionId>>().contains(collection.id()));
     
     QCOMPARE(mManager->collections().count(), 2);
