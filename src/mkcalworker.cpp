@@ -296,6 +296,8 @@ static QDateTime itemStartDateTime(const QOrganizerItem &item)
         return QOrganizerTodoOccurrence(item).startDateTime();
     case QOrganizerItemType::TypeJournal:
         return QOrganizerJournal(item).dateTime();
+    default:
+        break;
     }
     return QDateTime();
 }

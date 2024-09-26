@@ -1,1 +1,11 @@
 tmp
+*.cmake
+Makefile
+CMakeFiles
+CMakeCache.txt
+RPMS
+libqtorganizer_mkcal.so
+tst_engine
+*_autogen
+documentation.list
+install_manifest.txt
