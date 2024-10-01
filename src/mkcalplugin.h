@@ -44,7 +44,7 @@
 class mKCalFactory : public QtOrganizer::QOrganizerManagerEngineFactory
 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QOrganizerManagerEngineFactoryInterface")
+    Q_PLUGIN_METADATA(IID "org.qt-project.Qt.QOrganizerManagerEngineFactoryInterface" FILE "mkcal.json")
 
 public:
     QtOrganizer::QOrganizerManagerEngine* engine(const QMap<QString, QString>& parameters,
