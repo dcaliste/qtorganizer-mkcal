@@ -212,6 +212,11 @@ void mKCalWorker::runRequest(QOrganizerAbstractRequest *request)
     }
     case QOrganizerAbstractRequest::ItemFetchRequest: {
         QOrganizerItemFetchRequest *r = qobject_cast<QOrganizerItemFetchRequest*>(request);
+        if (r->filter().type() == QOrganizerItemFilter::InvalidFilter) {
+            QOrganizerManagerEngine::updateItemFetchRequest(r, QList<QOrganizerItem>(), error, QOrganizerAbstractRequest::FinishedState);
+            return;
+        }
+
         QList<QOrganizerItem> results
             = items(r->filter(), r->startDate(), r->endDate(),
                     r->maxCount(), r->sorting(), r->fetchHint(), &error);

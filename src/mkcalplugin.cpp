@@ -260,6 +260,7 @@ QList<QOrganizerItemDetail::DetailType> mKCalEngine::supportedItemDetails(QOrgan
 QList<QOrganizerItemFilter::FilterType> mKCalEngine::supportedFilters() const
 {
     return QList<QOrganizerItemFilter::FilterType>()
+        << QOrganizerItemFilter::InvalidFilter
         << QOrganizerItemFilter::DetailFilter
         << QOrganizerItemFilter::DetailFieldFilter
         << QOrganizerItemFilter::DetailRangeFilter
