@@ -8,4 +8,6 @@ target_link_libraries(tst_engine
 
 add_test(tst_engine tst_engine)
 
-install(TARGETS tst_engine DESTINATION /opt/tests/qtorganizer-mkcal)
+if(INSTALL_TESTS)
+	install(TARGETS tst_engine DESTINATION /opt/tests/qtorganizer-mkcal)
+endif()

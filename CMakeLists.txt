@@ -15,6 +15,8 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 include(FeatureSummary)
 include(GNUInstallDirs)
 
+option(INSTALL_TESTS "Install the tests on make install" ON)
+
 set(QT_MIN_VERSION "5.6.0")
 find_package(Qt5 ${QT_MIN_VERSION} COMPONENTS Organizer Test REQUIRED)
 find_package(KF5 COMPONENTS CalendarCore REQUIRED)
