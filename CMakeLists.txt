@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD 11)
 find_package(ECM REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
+include(CTest)
 include(FeatureSummary)
 include(GNUInstallDirs)
 
@@ -23,6 +24,8 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(MKCAL libmkcal-qt5 IMPORTED_TARGET REQUIRED)
 
 add_subdirectory(src)
-add_subdirectory(tests)
+if(BUILD_TESTING)
+	add_subdirectory(tests)
+endif()
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
