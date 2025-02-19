@@ -7,7 +7,3 @@ target_link_libraries(tst_engine
         KF5::CalendarCore)
 
 add_test(tst_engine tst_engine)
-
-if(INSTALL_TESTS)
-	install(TARGETS tst_engine DESTINATION /opt/tests/qtorganizer-mkcal)
-endif()
