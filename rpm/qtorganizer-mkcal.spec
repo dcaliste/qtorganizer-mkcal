@@ -33,6 +33,7 @@ make %{?_smp_mflags}
 
 %install
 make DESTDIR=%{buildroot} install
+install -m 644 -p -D tests/tst_engine %{buildroot}/opt/tests/qtorganizer-mkcal
 
 %files
 %defattr(-,root,root,-)
