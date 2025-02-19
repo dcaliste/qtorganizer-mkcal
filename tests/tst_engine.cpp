@@ -577,7 +577,7 @@ void tst_engine::testItemAudibleReminder()
     KCalendarCore::Alarm::Ptr alarm = incidence->alarms().first();
     QCOMPARE(alarm->type(), KCalendarCore::Alarm::Audio);
     QCOMPARE(alarm->audioFile(), detail.dataUrl().toString());
-    QCOMPARE(alarm->startOffset().asSeconds(), detail.secondsBeforeStart());
+    QCOMPARE(alarm->startOffset().asSeconds(), -detail.secondsBeforeStart());
     QVERIFY(!alarm->hasEndOffset());
     QCOMPARE(alarm->snoozeTime().asSeconds(), detail.repetitionDelay());
     QCOMPARE(alarm->repeatCount(), detail.repetitionCount());

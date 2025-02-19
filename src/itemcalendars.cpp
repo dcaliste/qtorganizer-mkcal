@@ -65,7 +65,7 @@ static KCalendarCore::Alarm::Ptr toAlarm(KCalendarCore::Incidence::Ptr incidence
                                          const QOrganizerItemReminder &reminder)
 {
     KCalendarCore::Alarm::Ptr alarm = incidence->newAlarm();
-    alarm->setStartOffset(KCalendarCore::Duration(reminder.secondsBeforeStart()));
+    alarm->setStartOffset(KCalendarCore::Duration(-reminder.secondsBeforeStart()));
     alarm->setRepeatCount(reminder.repetitionCount());
     alarm->setSnoozeTime(KCalendarCore::Duration(reminder.repetitionDelay()));
 
@@ -405,7 +405,7 @@ static void updateJournal(KCalendarCore::Journal::Ptr journal,
 static void toItemReminder(QOrganizerItemReminder *reminder,
                            const KCalendarCore::Alarm::Ptr &alarm)
 {
-    reminder->setSecondsBeforeStart(alarm->startOffset().asSeconds());
+    reminder->setSecondsBeforeStart(-alarm->startOffset().asSeconds());
     reminder->setRepetition(alarm->repeatCount(), alarm->snoozeTime().asSeconds());
 }
 
