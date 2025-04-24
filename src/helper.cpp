@@ -32,7 +32,7 @@
 #include "helper.h"
 
 QtOrganizer::QOrganizerCollection toCollection(const QString &managerUri,
-                                               const mKCal::Notebook::Ptr &nb)
+                                               const mKCal::Notebook::Ptr &nb, bool isDefault)
 {
     QtOrganizer::QOrganizerCollection collection;
     collection.setId(QtOrganizer::QOrganizerCollectionId(managerUri, nb->uid().toUtf8()));
@@ -42,6 +42,8 @@ QtOrganizer::QOrganizerCollection toCollection(const QString &managerUri,
                            nb->description());
     collection.setMetaData(QtOrganizer::QOrganizerCollection::KeyColor,
                            nb->color());
+    collection.setExtendedMetaData(QStringLiteral("default"),
+                                       isDefault);
     collection.setExtendedMetaData(QStringLiteral("shared"),
                                    nb->isShared());
     collection.setExtendedMetaData(QStringLiteral("master"),

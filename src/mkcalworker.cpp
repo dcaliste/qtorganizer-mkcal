@@ -546,7 +546,7 @@ QList<QOrganizerCollection> mKCalWorker::collections(QOrganizerManager::Error *e
     *error = QOrganizerManager::NoError;
     if (mOpened) {
         for (const mKCal::Notebook::Ptr &nb : mStorage->notebooks()) {
-            ret.append(toCollection(managerUri(), nb));
+            ret.append(toCollection(managerUri(), nb, mDefaultNotebookUid == nb->uid()));
         }
     } else {
         *error = QOrganizerManager::PermissionsError;
@@ -568,10 +568,13 @@ bool mKCalWorker::saveCollections(QList<QOrganizerCollection> *collections,
         int index = 0;
         for (QList<QOrganizerCollection>::Iterator it = collections->begin();
              it != collections->end(); ++it, ++index) {
+            mKCal::Notebook::Ptr nb;
+            bool isDefault = it->extendedMetaData("default").toBool();
             if (it->id().isNull()) {
-                mKCal::Notebook::Ptr nb(new mKCal::Notebook);
+                nb = mKCal::Notebook::Ptr(new mKCal::Notebook);
                 updateNotebook(nb, *it);
-                if (!mStorage->addNotebook(nb)) {
+
+                if (!(isDefault ? mStorage->setDefaultNotebook(nb) : mStorage->addNotebook(nb))) {
                     errors->insert(index, QOrganizerManager::PermissionsError);
                 } else {
                     it->setId(collectionId(nb->uid().toUtf8()));
@@ -579,10 +582,10 @@ bool mKCalWorker::saveCollections(QList<QOrganizerCollection> *collections,
                     added.prepend(it->id());
                 }
             } else {
-                mKCal::Notebook::Ptr nb = mStorage->notebook(it->id().localId());
+                nb = mStorage->notebook(it->id().localId());
                 if (nb) {
                     updateNotebook(nb, *it);
-                    if (!mStorage->updateNotebook(nb)) {
+                    if (!(isDefault ? mStorage->setDefaultNotebook(nb) : mStorage->updateNotebook(nb))) {
                         errors->insert(index, QOrganizerManager::PermissionsError);
                     } else {
                         modifiedIds.prepend(nb->uid());
@@ -592,6 +595,11 @@ bool mKCalWorker::saveCollections(QList<QOrganizerCollection> *collections,
                     errors->insert(index, QOrganizerManager::DoesNotExistError);
                 }
             }
+
+            if (isDefault && (mDefaultNotebookUid != nb->uid())) {
+                mDefaultNotebookUid = nb->uid();
+                emit defaultCollectionIdChanged(mDefaultNotebookUid);
+            }
         }
         if (!addedIds.isEmpty() || !modifiedIds.isEmpty()) {
             emit collectionsUpdated(addedIds, modifiedIds, QStringList());
@@ -600,7 +608,7 @@ bool mKCalWorker::saveCollections(QList<QOrganizerCollection> *collections,
             emit collectionsAdded(added);
         }
         if (!changed.isEmpty()) {
-            emit collectionsChanged(changed);            
+            emit collectionsChanged(changed);
         }
         QList<QPair<QOrganizerCollectionId, QOrganizerManager::Operation>> mods;
         for (const QOrganizerCollectionId &id : changed) {
@@ -642,16 +650,23 @@ bool mKCalWorker::removeCollections(const QList<QOrganizerCollectionId> &collect
         QStringList ids;
         QList<QOrganizerCollectionId> removedIds;
         QList<QPair<QOrganizerCollectionId, QOrganizerManager::Operation>> mods;
+        mKCal::Notebook::Ptr defaultNb = mStorage->defaultNotebook();
         int index = 0;
         for (const QOrganizerCollectionId &collectionId : collectionIds) {
             mKCal::Notebook::Ptr nb = mStorage->notebook(collectionId.localId());
             if (nb) {
-                if (!mStorage->deleteNotebook(nb)) {
+                // don't allow to remove a default collection
+                if (defaultNb && (defaultNb->uid() == nb->uid())) {
                     errors->insert(index, QOrganizerManager::PermissionsError);
+                    *error = QOrganizerManager::PermissionsError;
                 } else {
-                    ids.prepend(nb->uid());
-                    removedIds.prepend(collectionId);
-                    mods.prepend(QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(collectionId, QOrganizerManager::Remove));
+                    if (!mStorage->deleteNotebook(nb)) {
+                        errors->insert(index, QOrganizerManager::PermissionsError);
+                    } else {
+                        ids.prepend(nb->uid());
+                        removedIds.prepend(collectionId);
+                        mods.prepend(QPair<QOrganizerCollectionId, QOrganizerManager::Operation>(collectionId, QOrganizerManager::Remove));
+                    }
                 }
             } else {
                 errors->insert(index, QOrganizerManager::DoesNotExistError);

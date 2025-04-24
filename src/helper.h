@@ -37,7 +37,7 @@
 #include <notebook.h>
 
 QtOrganizer::QOrganizerCollection toCollection(const QString &managerUri,
-                                               const mKCal::Notebook::Ptr &nb);
+                                               const mKCal::Notebook::Ptr &nb, bool isDefault);
 
 void updateNotebook(mKCal::Notebook::Ptr nb,
                     const QtOrganizer::QOrganizerCollection &collection);

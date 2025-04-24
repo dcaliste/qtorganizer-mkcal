@@ -71,6 +71,7 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
 
+    void testDefaultCollection();
     void testCollections();
     void testCollectionIO();
     void testCollectionExternal();
@@ -160,6 +161,7 @@ void tst_engine::initTestCase()
 
 void tst_engine::cleanupTestCase()
 {
+    QFile::remove(QStringLiteral("db"));
     delete mManager;
 }
 
@@ -183,6 +185,42 @@ void tst_engine::testCollections()
 }
 
 Q_DECLARE_METATYPE(QList<QOrganizerCollectionId>)
+void tst_engine::testDefaultCollection()
+{
+    QOrganizerCollection existingCollection = mManager->collections().first();
+    QCOMPARE(existingCollection.id(), mManager->defaultCollectionId());
+    qRegisterMetaType<QList<QOrganizerCollectionId>>();
+    QSignalSpy added(mManager, &QOrganizerManager::collectionsAdded);
+    QSignalSpy deleted(mManager, &QOrganizerManager::collectionsRemoved);
+    QSignalSpy modified(mManager, &QOrganizerManager::collectionsChanged);
+
+    QOrganizerCollection collection;
+    collection.setMetaData(QOrganizerCollection::KeyName,
+                           QStringLiteral("Test default collection"));
+    collection.setExtendedMetaData(QStringLiteral("default"), true);
+    QVERIFY(mManager->saveCollection(&collection));
+    QCOMPARE(mManager->error(), QOrganizerManager::NoError);
+    QTRY_COMPARE(added.count(), 1);
+    collection = mManager->collection(collection.id());
+    QCOMPARE(mManager->defaultCollectionId(), collection.id());
+
+    // default collection can't be deleted
+    mManager->removeCollection(collection.id());
+    QTRY_VERIFY(deleted.isEmpty());
+    QCOMPARE(mManager->error(), QOrganizerManager::PermissionsError);
+    QCOMPARE(mManager->collections().count(), 2);
+
+    // now set default to previous one so that we can delete it
+    existingCollection.setExtendedMetaData(QStringLiteral("default"), true);
+    QVERIFY(mManager->saveCollection(&existingCollection));
+    QTRY_COMPARE(modified.count(), 1);
+    QCOMPARE(mManager->defaultCollectionId(), existingCollection.id());
+
+    deleted.clear();
+    mManager->removeCollection(collection.id());
+    QTRY_COMPARE(deleted.count(), 1);
+}
+
 void tst_engine::testCollectionIO()
 {
     QOrganizerCollection collection;
@@ -197,6 +235,7 @@ void tst_engine::testCollectionIO()
     collection.setMetaData(QOrganizerCollection::KeyImage,
                            QStringLiteral("theme://notebook.png"));
     collection.setExtendedMetaData(QStringLiteral("visible"), true);
+    collection.setExtendedMetaData(QStringLiteral("default"), false);
 
     qRegisterMetaType<QList<QOrganizerCollectionId>>();
     QSignalSpy added(mManager, &QOrganizerManager::collectionsAdded);
@@ -227,6 +266,8 @@ void tst_engine::testCollectionIO()
              collection.metaData(QOrganizerCollection::KeyImage));
     QCOMPARE(read.extendedMetaData(QStringLiteral("visible")),
              collection.extendedMetaData(QStringLiteral("visible")));
+    QCOMPARE(read.extendedMetaData(QStringLiteral("default")),
+                 collection.extendedMetaData(QStringLiteral("default")));
 
     collection.setMetaData(QOrganizerCollection::KeyDescription,
                            QStringLiteral("Updated description."));
