@@ -1122,17 +1122,15 @@ void tst_engine::testSimpleTodoIO()
 
 void tst_engine::testSimpleRangeRead()
 {
-    QSignalSpy dataChanged(mManager, &QOrganizerManager::dataChanged);
-
-    QOrganizerManager manager(QString::fromLatin1("mkcal"),
-                              mManager->managerParameters());
-    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+    QSignalSpy createdCollection(mManager, &QOrganizerManager::collectionsAdded);
+    QSignalSpy itemsAdded(mManager, &QOrganizerManager::itemsAdded);
 
     QOrganizerCollection collection;
     collection.setMetaData(QOrganizerCollection::KeyName,
                            QStringLiteral("Notebook for range tests"));
-    QVERIFY(manager.saveCollection(&collection));
-    QCOMPARE(manager.error(), QOrganizerManager::NoError);
+    QVERIFY(mManager->saveCollection(&collection));
+    QCOMPARE(mManager->error(), QOrganizerManager::NoError);
+    QTRY_COMPARE(createdCollection.count(), 1);
     QVERIFY(!collection.id().isNull());
 
     QOrganizerEvent event1;
@@ -1166,15 +1164,16 @@ void tst_engine::testSimpleRangeRead()
 
     QList<QOrganizerItem> items;
     items << event1 << todo2 << event3;
-    QVERIFY(manager.saveItems(&items));
+    QVERIFY(mManager->saveItems(&items));
+    QTRY_COMPARE(itemsAdded.count(), 1);
+    itemsAdded.clear();
+
     event1.setId(items.takeFirst().id());
     todo2.setId(items.takeFirst().id());
     event3.setId(items.takeFirst().id());
     QVERIFY(!event1.id().isNull());
     QVERIFY(!todo2.id().isNull());
     QVERIFY(!event3.id().isNull());
-    QTRY_COMPARE(dataChanged.count(), 1);
-    dataChanged.clear();
 
     QOrganizerEventOccurrence ex1;
     ex1.setCollectionId(collection.id());
@@ -1184,9 +1183,8 @@ void tst_engine::testSimpleRangeRead()
     ex1.setEndDateTime(ex1.startDateTime().addSecs(300));
     ex1.setParentId(event3.id());
     ex1.setOriginalDate(QDate(2024, 9, 23));
-    QVERIFY(manager.saveItem(&ex1));
-    QTRY_COMPARE(dataChanged.count(), 1);
-    dataChanged.clear();
+    QVERIFY(mManager->saveItem(&ex1));
+    QTRY_COMPARE(itemsAdded.count(), 1);
 
     QOrganizerItemCollectionFilter filter;
     filter.setCollectionId(collection.id());
