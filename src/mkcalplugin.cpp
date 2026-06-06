@@ -479,7 +479,10 @@ void mKCalEngine::processRequests()
 void mKCalEngine::requestDestroyed(QOrganizerAbstractRequest *request)
 {
     if (mRunningRequest == request) {
+        disconnect(mRunningRequest, &QOrganizerAbstractRequest::resultsAvailable,
+                   this, &mKCalEngine::processRequests);
         request->waitForFinished();
+        mRunningRequest = nullptr;
     } else if (mRequests.contains(request)) {
         cancelRequest(request);
     }
